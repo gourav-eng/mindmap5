@@ -1329,7 +1329,7 @@ export default function WorkflowApp() {
   // --- N key creates new card ---
   useEffect(() => {
     const handleNewCardKey = (e) => {
-      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT' || e.target.isContentEditable) return;
       if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
       if (e.key === 'n' || e.key === 'N') {
         e.preventDefault();
@@ -2656,6 +2656,7 @@ export default function WorkflowApp() {
   };
 
   const addNode = (clientX, clientY, targetGroupId = null) => {
+    if (!workspaceRef.current) return;
     takeSnapshot();
     const rect = workspaceRef.current.getBoundingClientRect();
     let targetX, targetY;
@@ -2663,9 +2664,15 @@ export default function WorkflowApp() {
     if (clientX !== undefined && clientY !== undefined) {
       targetX = (clientX - rect.left - transform.x) / transform.scale;
       targetY = (clientY - rect.top - transform.y) / transform.scale;
-    } else {
+    } else if (rect.width > 0 && rect.height > 0) {
       targetX = (rect.width / 2 - transform.x) / transform.scale - 150;
       targetY = (rect.height / 2 - transform.y) / transform.scale - 50;
+    } else {
+      // Canvas not visible, place at a default position relative to existing nodes
+      const existingNodes = activeWs?.nodes || [];
+      const maxX = existingNodes.length > 0 ? Math.max(...existingNodes.map(n => n.x)) + 320 : 200;
+      targetX = maxX;
+      targetY = 200;
     }
 
     const newNode = {
@@ -4224,6 +4231,7 @@ export default function WorkflowApp() {
                   <div 
                     className={`absolute right-0 top-1/2 translate-x-1/2 -translate-y-1/2 w-8 h-8 rounded-full cursor-crosshair z-30 flex items-center justify-center ${connecting ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'} transition-all`}
                     onPointerDown={(e) => { e.stopPropagation(); const coords = getWorkspaceCoords(e); setConnecting({ sourceId: group.id, startX: displayX + displayW, startY: displayY + displayH / 2, currentX: coords.x, currentY: coords.y }); }}
+                    onGotPointerCapture={(e) => { e.currentTarget.releasePointerCapture(e.pointerId); }}
                   >
                     <div className={`w-3 h-3 rounded-full border-2 border-white shadow ${theme.port}`} />
                   </div>
@@ -4336,6 +4344,7 @@ export default function WorkflowApp() {
                       const coords = getWorkspaceCoords(e);
                       setConnecting({ sourceId: img.id, startX: img.x + imgW, startY: img.y + imgH / 2, currentX: coords.x, currentY: coords.y });
                     }}
+                    onGotPointerCapture={(e) => { e.currentTarget.releasePointerCapture(e.pointerId); }}
                   />
                 </div>
               );
@@ -4496,6 +4505,7 @@ export default function WorkflowApp() {
                       const coords = getWorkspaceCoords(e);
                       setConnecting({ sourceId: textObj.id, startX: txtX + estWidth, startY: txtY + estHeight / 2, currentX: coords.x, currentY: coords.y });
                     }}
+                    onGotPointerCapture={(e) => { e.currentTarget.releasePointerCapture(e.pointerId); }}
                   >
                     <div className="w-2.5 h-2.5 rounded-full bg-indigo-500 border-2 border-white shadow" />
                   </div>
@@ -4709,6 +4719,7 @@ export default function WorkflowApp() {
                   <div 
                     className={`absolute right-0 top-1/2 translate-x-1/2 -translate-y-1/2 w-8 h-8 rounded-full cursor-crosshair z-30 flex items-center justify-center ${connecting ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'} transition-all`}
                     onPointerDown={(e) => { e.stopPropagation(); bringToFront(node.id); const coords = getWorkspaceCoords(e); setConnecting({ sourceId: node.id, startX: node.x + nodeDims.width, startY: node.y + HEADER_CENTER_Y, currentX: coords.x, currentY: coords.y }); }}
+                    onGotPointerCapture={(e) => { e.currentTarget.releasePointerCapture(e.pointerId); }}
                   >
                     <div className={`w-3 h-3 rounded-full border-2 border-white shadow ${theme.port}`} />
                   </div>
