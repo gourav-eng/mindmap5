@@ -2713,6 +2713,45 @@ export default function WorkflowApp() {
     });
   };
 
+  const addTaskGroup = (name) => {
+    const maxOrder = taskGroups.reduce((max, g) => Math.max(max, g.order), -1);
+    const newGroup = {
+      id: `tg-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      name,
+      order: maxOrder + 1,
+    };
+    setTaskGroups(prev => [...prev, newGroup]);
+  };
+
+  const deleteTaskGroup = (groupId) => {
+    const sorted = [...taskGroups].sort((a, b) => a.order - b.order);
+    const targetGroup = sorted.find(g => g.id !== groupId);
+    if (!targetGroup) return; // Don't delete the last group
+    // Move tasks from deleted group to the first available group
+    setTasks(prev => prev.map(t => t.groupId === groupId ? { ...t, groupId: targetGroup.id } : t));
+    setTaskGroups(prev => prev.filter(g => g.id !== groupId));
+  };
+
+  const locateCard = (cardId) => {
+    const card = nodes.find(n => n.id === cardId);
+    if (!card || !workspaceRef.current) return;
+    const rect = workspaceRef.current.getBoundingClientRect();
+    const centerX = rect.width / 2;
+    const centerY = rect.height / 2;
+    const nodeWidth = getNodeDimensions(card).width;
+    setTransform(prev => ({
+      x: centerX - card.x * prev.scale - (nodeWidth * prev.scale) / 2,
+      y: centerY - card.y * prev.scale - (140 * prev.scale) / 2,
+      scale: prev.scale,
+    }));
+    bringToFront(cardId);
+    setFocusedNodeId(cardId);
+    // Switch to split mode if in fullscreen to show the canvas
+    if (taskPanelMode === 'fullscreen') {
+      setTaskPanelMode('split');
+    }
+  };
+
   const addTaskFromCardRef = useRef(addTaskFromCard);
   useEffect(() => { addTaskFromCardRef.current = addTaskFromCard; });
 
@@ -4875,6 +4914,9 @@ export default function WorkflowApp() {
             onToggleTaskStatus={toggleTaskStatus}
             onMoveTaskToGroup={moveTaskToGroup}
             onReorderGroups={reorderGroups}
+            onAddGroup={addTaskGroup}
+            onDeleteGroup={deleteTaskGroup}
+            onLocateCard={locateCard}
           />
         )}
 

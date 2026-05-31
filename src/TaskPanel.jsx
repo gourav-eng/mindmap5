@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { 
   X, CheckSquare, ChevronUp, ChevronDown, 
-  Maximize2, Minimize2, Circle, MessageSquare
+  Maximize2, Minimize2, Circle, MessageSquare,
+  Plus, Trash2
 } from 'lucide-react';
 
 const STATUS_OPTIONS = [
@@ -25,8 +26,13 @@ export default function TaskPanel({
   onToggleTaskStatus,
   onMoveTaskToGroup,
   onReorderGroups,
+  onAddGroup,
+  onDeleteGroup,
+  onLocateCard,
 }) {
   const [expandedNotes, setExpandedNotes] = useState({});
+  const [newGroupName, setNewGroupName] = useState('');
+  const [showAddGroup, setShowAddGroup] = useState(false);
 
   if (!showTaskPanel) return null;
 
@@ -46,6 +52,14 @@ export default function TaskPanel({
     setExpandedNotes(prev => ({ ...prev, [taskId]: !prev[taskId] }));
   };
 
+  const handleAddGroup = () => {
+    const name = newGroupName.trim();
+    if (!name) return;
+    onAddGroup(name);
+    setNewGroupName('');
+    setShowAddGroup(false);
+  };
+
   return (
     <div className={`${taskPanelMode === 'fullscreen' ? 'flex-1' : 'w-1/2'} bg-white border-l border-slate-200 flex flex-col overflow-hidden shrink-0`}>
       {/* Header */}
@@ -56,6 +70,13 @@ export default function TaskPanel({
           <span className="text-xs text-slate-400 font-medium">({tasks.length})</span>
         </div>
         <div className="flex items-center gap-1">
+          <button
+            onClick={() => setShowAddGroup(!showAddGroup)}
+            className="p-1.5 hover:bg-slate-200 rounded-lg text-slate-500 hover:text-slate-700 transition-colors"
+            title="Add Group"
+          >
+            <Plus className="w-3.5 h-3.5" />
+          </button>
           <button
             onClick={() => setTaskPanelMode(taskPanelMode === 'split' ? 'fullscreen' : 'split')}
             className="p-1.5 hover:bg-slate-200 rounded-lg text-slate-500 hover:text-slate-700 transition-colors"
@@ -72,6 +93,35 @@ export default function TaskPanel({
           </button>
         </div>
       </div>
+
+      {/* Add Group Input */}
+      {showAddGroup && (
+        <div className="px-3 pt-3 pb-0 shrink-0">
+          <div className="flex items-center gap-1.5">
+            <input
+              type="text"
+              value={newGroupName}
+              onChange={(e) => setNewGroupName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleAddGroup(); if (e.key === 'Escape') { setShowAddGroup(false); setNewGroupName(''); } }}
+              placeholder="New group name..."
+              className="flex-1 text-xs bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-indigo-300 focus:border-indigo-300"
+              autoFocus
+            />
+            <button
+              onClick={handleAddGroup}
+              className="px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg transition-colors"
+            >
+              Add
+            </button>
+            <button
+              onClick={() => { setShowAddGroup(false); setNewGroupName(''); }}
+              className="p-1.5 hover:bg-slate-200 rounded-lg text-slate-400 hover:text-slate-600 transition-colors"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Task Groups */}
       <div className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-3">
@@ -99,6 +149,13 @@ export default function TaskPanel({
                     title="Move Down"
                   >
                     <ChevronDown className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={() => onDeleteGroup(group.id)}
+                    className="p-0.5 rounded hover:bg-red-50 text-slate-400 hover:text-red-500 transition-colors"
+                    title="Delete Group"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
                   </button>
                 </div>
               </div>
@@ -142,10 +199,14 @@ export default function TaskPanel({
 
                             {/* Linked Card Chip */}
                             {linkedCard && (
-                              <div className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 bg-indigo-50 border border-indigo-200 rounded text-[10px] font-medium text-indigo-700">
+                              <button
+                                onClick={() => onLocateCard(linkedCard.id)}
+                                className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 bg-indigo-50 border border-indigo-200 rounded text-[10px] font-medium text-indigo-700 hover:bg-indigo-100 hover:border-indigo-300 transition-colors cursor-pointer"
+                                title="Locate card on canvas"
+                              >
                                 <Circle className="w-2 h-2" />
                                 <span className="truncate max-w-[120px]">{linkedCard.title || `Card #${linkedCard.id}`}</span>
-                              </div>
+                              </button>
                             )}
 
                             {/* Status & Group Selectors */}
