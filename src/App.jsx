@@ -1487,6 +1487,15 @@ export default function WorkflowApp() {
     setWorkspaces(targetWorkspaces);
     setActiveTab(target.activeTab || (targetWorkspaces.length > 0 ? targetWorkspaces[0].id : ''));
     setNextId(target.nextId || 10);
+    setTasks(target.tasks || []);
+    setTaskGroups(target.taskGroups || [
+      { id: 'tg-today', name: 'Today', order: 0 },
+      { id: 'tg-later', name: 'Later', order: 1 },
+      { id: 'tg-waiting', name: 'Waiting', order: 2 },
+      { id: 'tg-research', name: 'Research', order: 3 },
+      { id: 'tg-followup', name: 'Follow-up', order: 4 },
+    ]);
+    setCardTaskLinks(target.cardTaskLinks || []);
     setStoredPassword(target.password || '');
     setPasswordEnabled(!!target.password);
     setIsAuthenticated(true);
@@ -1528,6 +1537,15 @@ export default function WorkflowApp() {
     setWorkspaces(targetWorkspaces);
     setActiveTab(target.activeTab || (targetWorkspaces.length > 0 ? targetWorkspaces[0].id : ''));
     setNextId(target.nextId || 10);
+    setTasks(target.tasks || []);
+    setTaskGroups(target.taskGroups || [
+      { id: 'tg-today', name: 'Today', order: 0 },
+      { id: 'tg-later', name: 'Later', order: 1 },
+      { id: 'tg-waiting', name: 'Waiting', order: 2 },
+      { id: 'tg-research', name: 'Research', order: 3 },
+      { id: 'tg-followup', name: 'Follow-up', order: 4 },
+    ]);
+    setCardTaskLinks(target.cardTaskLinks || []);
     // Default project is always password-free
     if (isDefault) {
       setStoredPassword('');
@@ -2634,8 +2652,10 @@ export default function WorkflowApp() {
   const addTaskFromCard = (cardId) => {
     const card = nodes.find(n => n.id === cardId);
     if (!card) return;
+    // Prevent duplicate task creation for the same card
+    if (cardTaskLinks.some(l => l.cardId === cardId)) return;
     const taskId = `task-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-    const defaultGroup = taskGroups.length > 0 ? taskGroups.sort((a, b) => a.order - b.order)[0].id : 'tg-today';
+    const defaultGroup = taskGroups.length > 0 ? [...taskGroups].sort((a, b) => a.order - b.order)[0].id : 'tg-today';
     const newTask = {
       id: taskId,
       title: card.title || 'Untitled Task',

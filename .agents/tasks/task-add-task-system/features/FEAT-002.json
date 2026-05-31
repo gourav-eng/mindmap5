@@ -1,0 +1,23 @@
+{
+  "id": "FEAT-002",
+  "type": "fix",
+  "description": "Address 3 actionable code issues from review: (1) restore task state on project switch, (2) fix state mutation via .sort(), (3) prevent duplicate task creation for same card.",
+  "status": "in_progress",
+  "steps": [
+    "In switchProject and cycleToProject, add setTasks(target.tasks || []), setTaskGroups(target.taskGroups || defaultGroups), setCardTaskLinks(target.cardTaskLinks || []) after setNextId.",
+    "In addTaskFromCard, replace taskGroups.sort(...) with [...taskGroups].sort(...) to avoid mutating React state.",
+    "In addTaskFromCard, add a guard at the top to check if cardTaskLinks already contains an entry for the given cardId, and return early if so."
+  ],
+  "acceptance_criteria": [
+    "npm run build succeeds without errors",
+    "switchProject restores tasks, taskGroups, and cardTaskLinks from target project",
+    "cycleToProject restores tasks, taskGroups, and cardTaskLinks from target project",
+    "addTaskFromCard does not mutate taskGroups state array directly",
+    "addTaskFromCard returns early if a cardTaskLink already exists for the given cardId"
+  ],
+  "verification": [
+    "Run 'npm run build' in /projects/sandbox/mindmap5 and confirm exit code 0 with no errors"
+  ],
+  "blocked_reason": null,
+  "findings": null
+}
