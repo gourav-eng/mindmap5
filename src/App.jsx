@@ -6,9 +6,11 @@ import {
   Sparkles, PanelLeftClose, PanelLeft,
   Grid, Move, Copy, ArrowUp, ArrowDown, RefreshCw, LayoutList, MonitorSpeaker,
   MoreVertical, ImageIcon, ChevronUp, Scissors, ClipboardPaste,
-  Lock, Shield, Eye, EyeOff, GitBranch, Map, Timer
+  Lock, Shield, Eye, EyeOff, GitBranch, Map, Timer,
+  CheckSquare, ListTodo
 } from 'lucide-react';
 import MiniMap from './MiniMap';
+import TaskPanel from './TaskPanel';
 
 // --- Premium Color Themes (10 colors) ---
 const THEMES = {
@@ -323,7 +325,7 @@ export default function WorkflowApp() {
   const workspaceRef = useRef(null);
 
   // --- UI Layout Panels ---
-  const [showSidebar, setShowSidebar] = useState(true);
+  const [showSidebar, setShowSidebar] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [showWorkspaceDropdown, setShowWorkspaceDropdown] = useState(false);
 
@@ -375,6 +377,19 @@ export default function WorkflowApp() {
   // --- Mini Map States ---
   const [showMiniMap, setShowMiniMap] = useState(false);
   const [miniMapOpenedViaShortcut, setMiniMapOpenedViaShortcut] = useState(false);
+
+  // --- Task System States ---
+  const [tasks, setTasks] = useState([]);
+  const [taskGroups, setTaskGroups] = useState([
+    { id: 'tg-today', name: 'Today', order: 0 },
+    { id: 'tg-later', name: 'Later', order: 1 },
+    { id: 'tg-waiting', name: 'Waiting', order: 2 },
+    { id: 'tg-research', name: 'Research', order: 3 },
+    { id: 'tg-followup', name: 'Follow-up', order: 4 },
+  ]);
+  const [cardTaskLinks, setCardTaskLinks] = useState([]);
+  const [showTaskPanel, setShowTaskPanel] = useState(false);
+  const [taskPanelMode, setTaskPanelMode] = useState('split');
 
   // --- Timer States ---
   const [showTimer, setShowTimer] = useState(false);
@@ -630,6 +645,11 @@ export default function WorkflowApp() {
             setWorkspaces(initialWorkspaces);
             setActiveTab(activeProj.activeTab || (initialWorkspaces.length > 0 ? initialWorkspaces[0].id : ''));
             setNextId(activeProj.nextId || 10);
+
+            // Load task data
+            if (activeProj.tasks) setTasks(activeProj.tasks);
+            if (activeProj.taskGroups) setTaskGroups(activeProj.taskGroups);
+            if (activeProj.cardTaskLinks) setCardTaskLinks(activeProj.cardTaskLinks);
             
             // Default project is always password-free
             const isDefaultProject = activeProj.id === resolvedDefaultId;
@@ -776,7 +796,7 @@ export default function WorkflowApp() {
           const now = Date.now();
           const lastMod = p.lastModified || 0;
           const shouldUpdateTime = (now - lastMod) > 60000;
-          return { ...p, workspaces, activeTab, nextId, ...(shouldUpdateTime ? { lastModified: now } : {}) };
+          return { ...p, workspaces, activeTab, nextId, tasks, taskGroups, cardTaskLinks, ...(shouldUpdateTime ? { lastModified: now } : {}) };
         });
         return updated;
       });
@@ -788,7 +808,7 @@ export default function WorkflowApp() {
       }, 500);
       localStorage.setItem('nexus-active-project', activeProjectId);
     }
-  }, [workspaces, activeTab, nextId, initialized, activeProjectId]);
+  }, [workspaces, activeTab, nextId, tasks, taskGroups, cardTaskLinks, initialized, activeProjectId]);
 
   useEffect(() => {
     if (initialized && activeProjectId) {
@@ -1268,6 +1288,41 @@ export default function WorkflowApp() {
     return () => window.removeEventListener('keydown', handleMiniMapKey);
   }, []);
 
+  // --- T key toggles task panel, Shift+T links focused card to tasks ---
+  useEffect(() => {
+    const handleTaskKey = (e) => {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.key === 'T' && e.shiftKey) {
+        e.preventDefault();
+        if (focusedNodeId) {
+          addTaskFromCardRef.current(focusedNodeId);
+        }
+        return;
+      }
+      if ((e.key === 't' || e.key === 'T') && !e.shiftKey) {
+        e.preventDefault();
+        setShowTaskPanel(prev => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleTaskKey);
+    return () => window.removeEventListener('keydown', handleTaskKey);
+  }, [focusedNodeId]);
+
+  // --- S key toggles sidebar ---
+  useEffect(() => {
+    const handleSidebarKey = (e) => {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+      if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+      if (e.key === 's') {
+        e.preventDefault();
+        setShowSidebar(prev => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleSidebarKey);
+    return () => window.removeEventListener('keydown', handleSidebarKey);
+  }, []);
+
   // --- N key creates new card ---
   useEffect(() => {
     const handleNewCardKey = (e) => {
@@ -1446,6 +1501,15 @@ export default function WorkflowApp() {
     setWorkspaces(targetWorkspaces);
     setActiveTab(target.activeTab || (targetWorkspaces.length > 0 ? targetWorkspaces[0].id : ''));
     setNextId(target.nextId || 10);
+    setTasks(target.tasks || []);
+    setTaskGroups(target.taskGroups || [
+      { id: 'tg-today', name: 'Today', order: 0 },
+      { id: 'tg-later', name: 'Later', order: 1 },
+      { id: 'tg-waiting', name: 'Waiting', order: 2 },
+      { id: 'tg-research', name: 'Research', order: 3 },
+      { id: 'tg-followup', name: 'Follow-up', order: 4 },
+    ]);
+    setCardTaskLinks(target.cardTaskLinks || []);
     setStoredPassword(target.password || '');
     setPasswordEnabled(!!target.password);
     setIsAuthenticated(true);
@@ -1487,6 +1551,15 @@ export default function WorkflowApp() {
     setWorkspaces(targetWorkspaces);
     setActiveTab(target.activeTab || (targetWorkspaces.length > 0 ? targetWorkspaces[0].id : ''));
     setNextId(target.nextId || 10);
+    setTasks(target.tasks || []);
+    setTaskGroups(target.taskGroups || [
+      { id: 'tg-today', name: 'Today', order: 0 },
+      { id: 'tg-later', name: 'Later', order: 1 },
+      { id: 'tg-waiting', name: 'Waiting', order: 2 },
+      { id: 'tg-research', name: 'Research', order: 3 },
+      { id: 'tg-followup', name: 'Follow-up', order: 4 },
+    ]);
+    setCardTaskLinks(target.cardTaskLinks || []);
     // Default project is always password-free
     if (isDefault) {
       setStoredPassword('');
@@ -2572,7 +2645,8 @@ export default function WorkflowApp() {
       id: nextId.toString(),
       x: targetX, y: targetY,
       title: 'New Card', content: '', theme: 'blue',
-      groupId: targetGroupId, cloneSourceId: null
+      groupId: targetGroupId, cloneSourceId: null,
+      linkedTaskIds: []
     };
     
     updateActiveWorkspace(ws => {
@@ -2587,6 +2661,113 @@ export default function WorkflowApp() {
 
   const addNodeRef = useRef(addNode);
   useEffect(() => { addNodeRef.current = addNode; });
+
+  // --- Task System Functions ---
+  const addTaskFromCard = (cardId) => {
+    const card = nodes.find(n => n.id === cardId);
+    if (!card) return;
+    // Prevent duplicate task creation for the same card
+    if (cardTaskLinks.some(l => l.cardId === cardId)) return;
+    const taskId = `task-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const defaultGroup = taskGroups.length > 0 ? [...taskGroups].sort((a, b) => a.order - b.order)[0].id : 'tg-today';
+    const newTask = {
+      id: taskId,
+      title: card.title || 'Untitled Task',
+      status: 'not_started',
+      groupId: defaultGroup,
+      note: '',
+      createdAt: Date.now(),
+    };
+    setTasks(prev => [...prev, newTask]);
+    setCardTaskLinks(prev => [...prev, { cardId, taskId }]);
+    // Update card's linkedTaskIds
+    updateNode(cardId, { linkedTaskIds: [...(card.linkedTaskIds || []), taskId] });
+    // Open task panel if not open
+    if (!showTaskPanel) setShowTaskPanel(true);
+  };
+
+  const updateTask = (taskId, updates) => {
+    setTasks(prev => prev.map(t => t.id === taskId ? { ...t, ...updates } : t));
+  };
+
+  const deleteTask = (taskId) => {
+    const link = cardTaskLinks.find(l => l.taskId === taskId);
+    if (link) {
+      const card = nodes.find(n => n.id === link.cardId);
+      if (card) {
+        updateNode(link.cardId, { linkedTaskIds: (card.linkedTaskIds || []).filter(id => id !== taskId) });
+      }
+    }
+    setTasks(prev => prev.filter(t => t.id !== taskId));
+    setCardTaskLinks(prev => prev.filter(l => l.taskId !== taskId));
+  };
+
+  const toggleTaskStatus = (taskId) => {
+    setTasks(prev => prev.map(t => {
+      if (t.id !== taskId) return t;
+      const statusCycle = ['not_started', 'in_progress', 'completed', 'blocked'];
+      const currentIdx = statusCycle.indexOf(t.status);
+      const nextStatus = statusCycle[(currentIdx + 1) % statusCycle.length];
+      return { ...t, status: nextStatus };
+    }));
+  };
+
+  const moveTaskToGroup = (taskId, groupId) => {
+    setTasks(prev => prev.map(t => t.id === taskId ? { ...t, groupId } : t));
+  };
+
+  const reorderGroups = (fromIndex, toIndex) => {
+    if (toIndex < 0 || toIndex >= taskGroups.length) return;
+    setTaskGroups(prev => {
+      const sorted = [...prev].sort((a, b) => a.order - b.order);
+      const temp = sorted[fromIndex].order;
+      sorted[fromIndex] = { ...sorted[fromIndex], order: sorted[toIndex].order };
+      sorted[toIndex] = { ...sorted[toIndex], order: temp };
+      return sorted;
+    });
+  };
+
+  const addTaskGroup = (name) => {
+    const maxOrder = taskGroups.reduce((max, g) => Math.max(max, g.order), -1);
+    const newGroup = {
+      id: `tg-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      name,
+      order: maxOrder + 1,
+    };
+    setTaskGroups(prev => [...prev, newGroup]);
+  };
+
+  const deleteTaskGroup = (groupId) => {
+    const sorted = [...taskGroups].sort((a, b) => a.order - b.order);
+    const targetGroup = sorted.find(g => g.id !== groupId);
+    if (!targetGroup) return; // Don't delete the last group
+    // Move tasks from deleted group to the first available group
+    setTasks(prev => prev.map(t => t.groupId === groupId ? { ...t, groupId: targetGroup.id } : t));
+    setTaskGroups(prev => prev.filter(g => g.id !== groupId));
+  };
+
+  const locateCard = (cardId) => {
+    const card = nodes.find(n => n.id === cardId);
+    if (!card || !workspaceRef.current) return;
+    const rect = workspaceRef.current.getBoundingClientRect();
+    const centerX = rect.width / 2;
+    const centerY = rect.height / 2;
+    const nodeWidth = getNodeDimensions(card).width;
+    setTransform(prev => ({
+      x: centerX - card.x * prev.scale - (nodeWidth * prev.scale) / 2,
+      y: centerY - card.y * prev.scale - (140 * prev.scale) / 2,
+      scale: prev.scale,
+    }));
+    bringToFront(cardId);
+    setFocusedNodeId(cardId);
+    // Switch to split mode if in fullscreen to show the canvas
+    if (taskPanelMode === 'fullscreen') {
+      setTaskPanelMode('split');
+    }
+  };
+
+  const addTaskFromCardRef = useRef(addTaskFromCard);
+  useEffect(() => { addTaskFromCardRef.current = addTaskFromCard; });
 
   const createGroup = (clientX, clientY) => {
     takeSnapshot();
@@ -3547,25 +3728,25 @@ export default function WorkflowApp() {
     <div className="flex flex-col h-screen w-full bg-[#f8fafc] font-sans text-slate-800 selection:bg-indigo-100 overflow-hidden">
       
       {/* --- Top Command Toolbar --- */}
-      <header className="h-14 sm:h-16 bg-white border-b border-slate-200/80 flex items-center px-2 sm:px-4 md:px-6 shadow-sm z-50 justify-between shrink-0 gap-1 sm:gap-2">
+      <header className="h-10 bg-white border-b border-slate-200/80 flex items-center px-2 sm:px-3 z-50 justify-between shrink-0 gap-1 sm:gap-2">
         <div className="flex items-center gap-1.5 sm:gap-3 min-w-0 flex-1">
           <button 
             onClick={() => setShowSidebar(!showSidebar)}
             className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-500 transition-colors shrink-0"
-            title={showSidebar ? "Hide Dashboard" : "Show Dashboard"}
+            title={showSidebar ? "Hide Sidebar (S)" : "Show Sidebar (S)"}
           >
-            {showSidebar ? <PanelLeftClose className="w-5 h-5" /> : <PanelLeft className="w-5 h-5" />}
+            {showSidebar ? <PanelLeftClose className="w-4 h-4" /> : <PanelLeft className="w-4 h-4" />}
           </button>
           
-          <div className="p-2 sm:p-2.5 bg-gradient-to-br from-indigo-600 to-indigo-800 rounded-lg sm:rounded-xl text-white shadow-md shadow-indigo-100 shrink-0">
-            <Network className="w-4 h-4 sm:w-5 sm:h-5" />
+          <div className="p-1.5 bg-gradient-to-br from-indigo-600 to-indigo-800 rounded-lg text-white shadow-md shadow-indigo-100 shrink-0">
+            <Network className="w-4 h-4" />
           </div>
 
           {/* Workspace Dropdown Selector */}
           <div className="relative min-w-0 flex-1 max-w-[200px] sm:max-w-[240px] md:max-w-[300px]">
             <button
               onClick={() => setShowWorkspaceDropdown(!showWorkspaceDropdown)}
-              className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg hover:bg-slate-50 border border-slate-200 transition-colors w-full"
+              className="flex items-center gap-1 sm:gap-2 px-2 py-1 rounded-lg hover:bg-slate-50 border border-slate-200 transition-colors w-full"
             >
               <span className="text-xs sm:text-sm font-semibold text-slate-700 truncate flex-1 text-left">
                 {activeWs?.name || 'Select Workspace'}
@@ -3601,11 +3782,11 @@ export default function WorkflowApp() {
 
         <div className="relative flex items-center gap-0.5 sm:gap-1 shrink-0">
           {/* Always-visible Undo/Redo buttons */}
-          <button onClick={performUndo} disabled={!canUndo} className={`p-1.5 sm:p-2 rounded-lg transition-colors ${!canUndo ? 'text-slate-300 cursor-not-allowed' : 'text-slate-600 hover:bg-slate-100'}`} title="Undo">
-            <Undo2 className="w-4 h-4 sm:w-5 sm:h-5" />
+          <button onClick={performUndo} disabled={!canUndo} className={`p-1.5 rounded-lg transition-colors ${!canUndo ? 'text-slate-300 cursor-not-allowed' : 'text-slate-600 hover:bg-slate-100'}`} title="Undo">
+            <Undo2 className="w-4 h-4" />
           </button>
-          <button onClick={performRedo} disabled={!canRedo} className={`p-1.5 sm:p-2 rounded-lg transition-colors ${!canRedo ? 'text-slate-300 cursor-not-allowed' : 'text-slate-600 hover:bg-slate-100'}`} title="Redo">
-            <Redo2 className="w-4 h-4 sm:w-5 sm:h-5" />
+          <button onClick={performRedo} disabled={!canRedo} className={`p-1.5 rounded-lg transition-colors ${!canRedo ? 'text-slate-300 cursor-not-allowed' : 'text-slate-600 hover:bg-slate-100'}`} title="Redo">
+            <Redo2 className="w-4 h-4" />
           </button>
 
           <div className="w-px h-5 sm:h-6 bg-slate-200 mx-0.5 sm:mx-1"></div>
@@ -3615,10 +3796,10 @@ export default function WorkflowApp() {
           <input type="file" accept=".json" ref={partialImportInputRef} onChange={handlePartialImportFile} className="hidden" />
           <button
             onClick={() => setShowMoreMenu(!showMoreMenu)}
-            className="p-1.5 sm:p-2 hover:bg-slate-100 rounded-lg text-slate-600 transition-colors"
+            className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-600 transition-colors"
             title="More actions"
           >
-            <MoreVertical className="w-4 h-4 sm:w-5 sm:h-5" />
+            <MoreVertical className="w-4 h-4" />
           </button>
 
           {showMoreMenu && (
@@ -3668,7 +3849,7 @@ export default function WorkflowApp() {
 
         {/* --- Left Sidebar --- */}
         {showSidebar && (
-          <aside className="w-[calc(100vw-3rem)] max-w-80 bg-white border-r border-slate-200 flex flex-col shrink-0 z-40 animate-in slide-in-from-left duration-200 fixed md:relative inset-y-0 left-0 top-14 sm:top-16 md:top-0 shadow-xl md:shadow-none overflow-y-auto">
+          <aside className="w-[calc(100vw-3rem)] max-w-80 bg-white border-r border-slate-200 flex flex-col shrink-0 z-40 animate-in slide-in-from-left duration-200 fixed md:relative inset-y-0 left-0 top-10 md:top-0 shadow-xl md:shadow-none overflow-y-auto">
             <div className="p-4 border-b border-slate-100">
               <div className="flex flex-col gap-2">
                 <div className="flex items-center gap-2">
@@ -3706,6 +3887,13 @@ export default function WorkflowApp() {
                   className={`flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all mt-1.5 w-full ${showClonePanel ? 'bg-violet-100 text-violet-700 border border-violet-300' : 'bg-slate-100 text-slate-500 hover:text-slate-700 hover:bg-slate-200'}`}
                 >
                   <Copy className="w-3.5 h-3.5" /> Show Clone Nodes
+                </button>
+                <button
+                  onClick={() => setShowTaskPanel(!showTaskPanel)}
+                  title="Tasks"
+                  className={`flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all mt-1.5 w-full ${showTaskPanel ? 'bg-emerald-100 text-emerald-700 border border-emerald-300' : 'bg-slate-100 text-slate-500 hover:text-slate-700 hover:bg-slate-200'}`}
+                >
+                  <ListTodo className="w-3.5 h-3.5" /> Tasks
                 </button>
               </div>
             </div>
@@ -3803,7 +3991,7 @@ export default function WorkflowApp() {
         {/* --- Main Workspace Canvas Area --- */}
         <main
           ref={workspaceRef}
-          className={`${showClonePanel ? 'flex-1 min-w-0' : 'flex-1'} relative overflow-hidden ${showClonePanel ? 'bg-[#1a1a2e]' : 'bg-[#1e1e2e]'} touch-none text-slate-800 transition-all duration-300`}
+          className={`${showTaskPanel && taskPanelMode === 'split' ? 'w-1/2' : showClonePanel ? 'flex-1 min-w-0' : 'flex-1'} relative overflow-hidden ${showClonePanel ? 'bg-[#1a1a2e]' : 'bg-[#1e1e2e]'} touch-none text-slate-800 transition-all duration-300`}
           onPointerDown={handlePointerDownMain}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
@@ -3815,7 +4003,7 @@ export default function WorkflowApp() {
           onTouchEnd={handleTouchEnd}
           onDragOver={(e) => e.preventDefault()}
           onDrop={handleCanvasImageDrop}
-          style={{ display: viewMode === 'canvas' ? undefined : 'none' }}
+          style={{ display: viewMode === 'canvas' && !(showTaskPanel && taskPanelMode === 'fullscreen') ? undefined : 'none' }}
         >
           {/* Panning grid backdrop */}
           <div className="absolute inset-0 canvas-grid-clickable cursor-crosshair active:cursor-grabbing opacity-60" style={{
@@ -4220,6 +4408,15 @@ export default function WorkflowApp() {
                     </div>
                   )}
 
+                  {/* Task status indicator */}
+                  {(node.linkedTaskIds && node.linkedTaskIds.length > 0) && (() => {
+                    const linkedTask = tasks.find(t => node.linkedTaskIds.includes(t.id));
+                    if (!linkedTask) return null;
+                    const statusColors = { not_started: 'bg-gray-400', in_progress: 'bg-blue-500', completed: 'bg-green-500', blocked: 'bg-amber-500' };
+                    const dotColor = statusColors[linkedTask.status] || 'bg-gray-400';
+                    return <div className={`absolute top-2 right-2 w-2.5 h-2.5 rounded-full ${dotColor}`} title={`Task: ${linkedTask.status.replace('_', ' ')}`} />;
+                  })()}
+
                   {/* Hover toolbar */}
                   <div className="absolute -top-8 right-1 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity bg-white rounded-md shadow border border-slate-200 px-1 py-0.5" onPointerDown={(e) => e.stopPropagation()}>
                     <button 
@@ -4368,6 +4565,13 @@ export default function WorkflowApp() {
               >
                 <Timer className="w-4 h-4 sm:w-5 sm:h-5" />
               </button>
+              <button
+                onClick={() => setShowTaskPanel(prev => !prev)}
+                className={`self-center p-2 rounded-lg shadow-lg border transition-colors ${showTaskPanel ? 'bg-indigo-50 text-indigo-600 border-indigo-200' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'}`}
+                title="Tasks (T)"
+              >
+                <ListTodo className="w-4 h-4 sm:w-5 sm:h-5" />
+              </button>
             </div>
 
             <div className="flex flex-col items-center bg-white rounded-lg shadow-lg border border-slate-200 p-1">
@@ -4484,6 +4688,9 @@ export default function WorkflowApp() {
               </button>
               <button className="w-full text-left px-4 py-2 hover:bg-blue-50 text-xs font-semibold text-slate-700 flex items-center" onClick={() => { exportSelectedNodes([nodeContextMenu.nodeId]); setNodeContextMenu(null); }}>
                 <Download className="w-3.5 h-3.5 mr-2 text-blue-500" /> Export Branch
+              </button>
+              <button className="w-full text-left px-4 py-2 hover:bg-emerald-50 text-xs font-semibold text-slate-700 flex items-center" onClick={() => { addTaskFromCard(nodeContextMenu.nodeId); setNodeContextMenu(null); }}>
+                <CheckSquare className="w-3.5 h-3.5 mr-2 text-emerald-500" /> Add to Tasks
               </button>
               
               <div className="h-px bg-slate-150 my-1 w-full" />
@@ -4711,6 +4918,28 @@ export default function WorkflowApp() {
             </>
           );
         })()}
+
+        {/* --- Task Panel --- */}
+        {showTaskPanel && viewMode === 'canvas' && (
+          <TaskPanel
+            tasks={tasks}
+            taskGroups={taskGroups}
+            cardTaskLinks={cardTaskLinks}
+            nodes={nodes}
+            showTaskPanel={showTaskPanel}
+            taskPanelMode={taskPanelMode}
+            setTaskPanelMode={setTaskPanelMode}
+            onClose={() => setShowTaskPanel(false)}
+            onUpdateTask={updateTask}
+            onDeleteTask={deleteTask}
+            onToggleTaskStatus={toggleTaskStatus}
+            onMoveTaskToGroup={moveTaskToGroup}
+            onReorderGroups={reorderGroups}
+            onAddGroup={addTaskGroup}
+            onDeleteGroup={deleteTaskGroup}
+            onLocateCard={locateCard}
+          />
+        )}
 
         {/* --- Outline Backlog Board View --- */}
         {viewMode === 'outline' && (
