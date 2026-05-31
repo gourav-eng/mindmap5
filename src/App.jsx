@@ -12,6 +12,9 @@ import {
 import MiniMap from './MiniMap';
 import TaskPanel from './TaskPanel';
 
+// Stable empty array to avoid new reference on each render
+const EMPTY_IMAGES = [];
+
 // --- Premium Color Themes (10 colors) ---
 const THEMES = {
   blue: {
@@ -1192,6 +1195,7 @@ export default function WorkflowApp() {
   const nodes = useMemo(() => activeWs?.nodes || [], [activeWs]);
   const edges = useMemo(() => activeWs?.edges || [], [activeWs]);
   const groups = useMemo(() => activeWs?.groups || [], [activeWs]);
+  const images = useMemo(() => activeWs?.images || EMPTY_IMAGES, [activeWs]);
 
   const updateActiveWorkspace = useCallback((updater) => {
     setWorkspaces(prev => prev.map(ws => ws.id === activeTab ? { ...ws, ...updater(ws) } : ws));
@@ -3559,7 +3563,7 @@ export default function WorkflowApp() {
     const node = nodes.find(n => n.id === nodeId);
     if (!node) {
       // Check if it's an image object
-      const img = (activeWs?.images || []).find(i => i.id === nodeId);
+      const img = images.find(i => i.id === nodeId);
       if (img) {
         const imgX = draggingImage?.id === img.id ? draggingImage.currentX : img.x;
         const imgY = draggingImage?.id === img.id ? draggingImage.currentY : img.y;
@@ -3588,7 +3592,7 @@ export default function WorkflowApp() {
       x: isSource ? coords.x + dims.width : coords.x,
       y: coords.y + HEADER_CENTER_Y
     };
-  }, [nodes, activeWs, groups, draggingImage, getLiveCoordinates, getNodeDimensions]);
+  }, [nodes, images, groups, draggingImage, getLiveCoordinates, getNodeDimensions]);
 
   if (!initialized || !activeWs) return null;
 
@@ -4412,7 +4416,7 @@ export default function WorkflowApp() {
               edges={edges}
               nodes={nodes}
               groups={groups}
-              images={activeWs?.images || []}
+              images={images}
               connecting={connecting}
               draggingImage={draggingImage}
               getConnectionPoint={getConnectionPoint}
@@ -4423,7 +4427,7 @@ export default function WorkflowApp() {
 
 
             {/* --- Canvas Image Objects --- */}
-            {(activeWs?.images || []).map(img => {
+            {images.map(img => {
               const imgX = draggingImage?.id === img.id ? draggingImage.currentX : img.x;
               const imgY = draggingImage?.id === img.id ? draggingImage.currentY : img.y;
               const imgW = img.width || 280;
@@ -4632,7 +4636,7 @@ export default function WorkflowApp() {
           <MiniMap
             nodes={nodes}
             groups={groups}
-            images={activeWs?.images || []}
+            images={images}
             transformX={transform.x}
             transformY={transform.y}
             transformScale={transform.scale}
