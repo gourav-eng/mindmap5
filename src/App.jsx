@@ -1353,7 +1353,7 @@ export default function WorkflowApp() {
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT' || e.target.isContentEditable) return;
       if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
       if (e.key === 'c' || e.key === 'C') {
-        if (selectedNodeIds.length === 0) return;
+        if (selectedNodeIds.length < 2) return;
         e.preventDefault();
         if (selectedNodeIds.length === 2) {
           const [sourceId, targetId] = selectedNodeIds;
@@ -1361,9 +1361,11 @@ export default function WorkflowApp() {
           const exists = currentEdges.some(edge => (edge.source === sourceId && edge.target === targetId) || (edge.source === targetId && edge.target === sourceId));
           if (!exists) {
             takeSnapshot();
-            updateActiveWorkspace(ws => ({ edges: [...ws.edges, { id: `e-${Date.now()}`, source: sourceId, target: targetId }] }));
+            updateActiveWorkspace(ws => ({ edges: [...ws.edges, { id: `e-${Date.now()}-${Math.random().toString(36).slice(2,6)}`, source: sourceId, target: targetId }] }));
+            showToast('Connected');
+          } else {
+            showToast('Already connected');
           }
-          showToast('Connected');
           setSelectedNodeIds([]);
         } else {
           showToast('Select only 2 objects');
@@ -5143,9 +5145,11 @@ export default function WorkflowApp() {
               const exists = edges.some(e => (e.source === sourceId && e.target === targetId) || (e.source === targetId && e.target === sourceId));
               if (!exists) {
                 takeSnapshot();
-                updateActiveWorkspace(ws => ({ edges: [...ws.edges, { id: `e-${Date.now()}`, source: sourceId, target: targetId }] }));
+                updateActiveWorkspace(ws => ({ edges: [...ws.edges, { id: `e-${Date.now()}-${Math.random().toString(36).slice(2,6)}`, source: sourceId, target: targetId }] }));
+                showToast('Connected');
+              } else {
+                showToast('Already connected');
               }
-              showToast('Connected');
               setSelectedNodeIds([]);
             } else {
               showToast('Select only 2 objects');
