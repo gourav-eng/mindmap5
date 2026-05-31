@@ -325,7 +325,7 @@ export default function WorkflowApp() {
   const workspaceRef = useRef(null);
 
   // --- UI Layout Panels ---
-  const [showSidebar, setShowSidebar] = useState(true);
+  const [showSidebar, setShowSidebar] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [showWorkspaceDropdown, setShowWorkspaceDropdown] = useState(false);
 
@@ -1308,6 +1308,20 @@ export default function WorkflowApp() {
     window.addEventListener('keydown', handleTaskKey);
     return () => window.removeEventListener('keydown', handleTaskKey);
   }, [focusedNodeId]);
+
+  // --- S key toggles sidebar ---
+  useEffect(() => {
+    const handleSidebarKey = (e) => {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+      if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+      if (e.key === 's') {
+        e.preventDefault();
+        setShowSidebar(prev => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleSidebarKey);
+    return () => window.removeEventListener('keydown', handleSidebarKey);
+  }, []);
 
   // --- N key creates new card ---
   useEffect(() => {
@@ -3714,25 +3728,25 @@ export default function WorkflowApp() {
     <div className="flex flex-col h-screen w-full bg-[#f8fafc] font-sans text-slate-800 selection:bg-indigo-100 overflow-hidden">
       
       {/* --- Top Command Toolbar --- */}
-      <header className="h-14 sm:h-16 bg-white border-b border-slate-200/80 flex items-center px-2 sm:px-4 md:px-6 shadow-sm z-50 justify-between shrink-0 gap-1 sm:gap-2">
+      <header className="h-10 bg-white border-b border-slate-200/80 flex items-center px-2 sm:px-3 z-50 justify-between shrink-0 gap-1 sm:gap-2">
         <div className="flex items-center gap-1.5 sm:gap-3 min-w-0 flex-1">
           <button 
             onClick={() => setShowSidebar(!showSidebar)}
             className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-500 transition-colors shrink-0"
-            title={showSidebar ? "Hide Dashboard" : "Show Dashboard"}
+            title={showSidebar ? "Hide Sidebar (S)" : "Show Sidebar (S)"}
           >
-            {showSidebar ? <PanelLeftClose className="w-5 h-5" /> : <PanelLeft className="w-5 h-5" />}
+            {showSidebar ? <PanelLeftClose className="w-4 h-4" /> : <PanelLeft className="w-4 h-4" />}
           </button>
           
-          <div className="p-2 sm:p-2.5 bg-gradient-to-br from-indigo-600 to-indigo-800 rounded-lg sm:rounded-xl text-white shadow-md shadow-indigo-100 shrink-0">
-            <Network className="w-4 h-4 sm:w-5 sm:h-5" />
+          <div className="p-1.5 bg-gradient-to-br from-indigo-600 to-indigo-800 rounded-lg text-white shadow-md shadow-indigo-100 shrink-0">
+            <Network className="w-4 h-4" />
           </div>
 
           {/* Workspace Dropdown Selector */}
           <div className="relative min-w-0 flex-1 max-w-[200px] sm:max-w-[240px] md:max-w-[300px]">
             <button
               onClick={() => setShowWorkspaceDropdown(!showWorkspaceDropdown)}
-              className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg hover:bg-slate-50 border border-slate-200 transition-colors w-full"
+              className="flex items-center gap-1 sm:gap-2 px-2 py-1 rounded-lg hover:bg-slate-50 border border-slate-200 transition-colors w-full"
             >
               <span className="text-xs sm:text-sm font-semibold text-slate-700 truncate flex-1 text-left">
                 {activeWs?.name || 'Select Workspace'}
@@ -3768,11 +3782,11 @@ export default function WorkflowApp() {
 
         <div className="relative flex items-center gap-0.5 sm:gap-1 shrink-0">
           {/* Always-visible Undo/Redo buttons */}
-          <button onClick={performUndo} disabled={!canUndo} className={`p-1.5 sm:p-2 rounded-lg transition-colors ${!canUndo ? 'text-slate-300 cursor-not-allowed' : 'text-slate-600 hover:bg-slate-100'}`} title="Undo">
-            <Undo2 className="w-4 h-4 sm:w-5 sm:h-5" />
+          <button onClick={performUndo} disabled={!canUndo} className={`p-1.5 rounded-lg transition-colors ${!canUndo ? 'text-slate-300 cursor-not-allowed' : 'text-slate-600 hover:bg-slate-100'}`} title="Undo">
+            <Undo2 className="w-4 h-4" />
           </button>
-          <button onClick={performRedo} disabled={!canRedo} className={`p-1.5 sm:p-2 rounded-lg transition-colors ${!canRedo ? 'text-slate-300 cursor-not-allowed' : 'text-slate-600 hover:bg-slate-100'}`} title="Redo">
-            <Redo2 className="w-4 h-4 sm:w-5 sm:h-5" />
+          <button onClick={performRedo} disabled={!canRedo} className={`p-1.5 rounded-lg transition-colors ${!canRedo ? 'text-slate-300 cursor-not-allowed' : 'text-slate-600 hover:bg-slate-100'}`} title="Redo">
+            <Redo2 className="w-4 h-4" />
           </button>
 
           <div className="w-px h-5 sm:h-6 bg-slate-200 mx-0.5 sm:mx-1"></div>
@@ -3782,10 +3796,10 @@ export default function WorkflowApp() {
           <input type="file" accept=".json" ref={partialImportInputRef} onChange={handlePartialImportFile} className="hidden" />
           <button
             onClick={() => setShowMoreMenu(!showMoreMenu)}
-            className="p-1.5 sm:p-2 hover:bg-slate-100 rounded-lg text-slate-600 transition-colors"
+            className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-600 transition-colors"
             title="More actions"
           >
-            <MoreVertical className="w-4 h-4 sm:w-5 sm:h-5" />
+            <MoreVertical className="w-4 h-4" />
           </button>
 
           {showMoreMenu && (
@@ -3835,7 +3849,7 @@ export default function WorkflowApp() {
 
         {/* --- Left Sidebar --- */}
         {showSidebar && (
-          <aside className="w-[calc(100vw-3rem)] max-w-80 bg-white border-r border-slate-200 flex flex-col shrink-0 z-40 animate-in slide-in-from-left duration-200 fixed md:relative inset-y-0 left-0 top-14 sm:top-16 md:top-0 shadow-xl md:shadow-none overflow-y-auto">
+          <aside className="w-[calc(100vw-3rem)] max-w-80 bg-white border-r border-slate-200 flex flex-col shrink-0 z-40 animate-in slide-in-from-left duration-200 fixed md:relative inset-y-0 left-0 top-10 md:top-0 shadow-xl md:shadow-none overflow-y-auto">
             <div className="p-4 border-b border-slate-100">
               <div className="flex flex-col gap-2">
                 <div className="flex items-center gap-2">
