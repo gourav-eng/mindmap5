@@ -345,6 +345,7 @@ export default function WorkflowApp() {
   const [openLinkPicker, setOpenLinkPicker] = useState(null);
   const [editingTab, setEditingTab] = useState(null);
   const [editingTextNode, setEditingTextNode] = useState(null);
+  const [editingTextObjectId, setEditingTextObjectId] = useState(null);
   const [contextMenu, setContextMenu] = useState(null);
   const [nodeContextMenu, setNodeContextMenu] = useState(null);
   const [errorMessage, setErrorMessage] = useState('');
@@ -4345,20 +4346,25 @@ export default function WorkflowApp() {
               const txtX = draggingText?.id === textObj.id ? draggingText.currentX : textObj.x;
               const txtY = draggingText?.id === textObj.id ? draggingText.currentY : textObj.y;
               const fontSize = textObj.fontSize || 18;
-              const estWidth = Math.max(60, (textObj.text || '').length * fontSize * 0.6 + 24);
-              const estHeight = fontSize + 16;
+              const textContent = textObj.text || '';
+              const lines = textContent.split('\n');
+              const longestLine = lines.reduce((a, b) => a.length > b.length ? a : b, '');
+              const estWidth = Math.max(80, longestLine.length * fontSize * 0.6 + 32);
+              const estHeight = Math.max(fontSize + 16, lines.length * (fontSize * 1.4) + 16);
+              const isEditing = editingTextObjectId === textObj.id;
 
               return (
                 <div
                   key={textObj.id}
-                  className="absolute pointer-events-auto group cursor-grab active:cursor-grabbing"
+                  className={`absolute pointer-events-auto group ${isEditing ? 'cursor-text' : 'cursor-grab active:cursor-grabbing'}`}
                   style={{
                     left: txtX,
                     top: txtY,
                     zIndex: draggingText?.id === textObj.id ? 9999 : 45
                   }}
                   onPointerDown={(e) => {
-                    if (e.target.tagName === 'INPUT' || e.target.closest('button')) return;
+                    if (isEditing) return;
+                    if (e.target.closest('button') || e.target.closest('select') || e.target.closest('input[type="color"]')) return;
                     e.stopPropagation();
                     dragSnapshot.current = JSON.parse(JSON.stringify(stateRef.current));
                     setDraggingText({
@@ -4370,6 +4376,11 @@ export default function WorkflowApp() {
                       currentX: textObj.x,
                       currentY: textObj.y
                     });
+                  }}
+                  onDoubleClick={(e) => {
+                    e.stopPropagation();
+                    takeSnapshot();
+                    setEditingTextObjectId(textObj.id);
                   }}
                   onPointerUp={(e) => {
                     if (connecting && connecting.sourceId !== textObj.id) {
@@ -4384,21 +4395,44 @@ export default function WorkflowApp() {
                     }
                   }}
                 >
-                  {/* Text content - editable on double click */}
-                  <input
-                    className="bg-transparent focus:outline-none focus:bg-white/80 focus:ring-1 focus:ring-indigo-300 rounded px-2 py-1 cursor-grab active:cursor-grabbing min-w-[40px]"
-                    style={{
-                      fontSize: `${fontSize}px`,
-                      fontWeight: textObj.fontWeight || 'bold',
-                      color: textObj.color || '#334155',
-                      width: `${estWidth}px`,
-                    }}
-                    value={textObj.text || ''}
-                    onChange={(e) => updateTextObject(textObj.id, { text: e.target.value })}
-                    onFocus={() => takeSnapshot()}
-                    onPointerDown={(e) => e.stopPropagation()}
-                    placeholder="Text..."
-                  />
+                  {/* Text content - display mode or edit mode */}
+                  {isEditing ? (
+                    <textarea
+                      autoFocus
+                      className="bg-white/90 outline-none ring-2 ring-indigo-300 rounded px-2 py-1 resize-none min-w-[80px]"
+                      style={{
+                        fontSize: `${fontSize}px`,
+                        fontWeight: textObj.fontWeight || 'bold',
+                        color: textObj.color || '#334155',
+                        width: `${estWidth}px`,
+                        height: `${estHeight}px`,
+                        lineHeight: '1.4',
+                      }}
+                      value={textObj.text || ''}
+                      onChange={(e) => updateTextObject(textObj.id, { text: e.target.value })}
+                      onBlur={() => setEditingTextObjectId(null)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Escape') {
+                          setEditingTextObjectId(null);
+                        }
+                      }}
+                      onPointerDown={(e) => e.stopPropagation()}
+                      placeholder="Type text..."
+                    />
+                  ) : (
+                    <div
+                      className="px-2 py-1 whitespace-pre-wrap select-none min-w-[40px] rounded hover:bg-white/30 transition-colors"
+                      style={{
+                        fontSize: `${fontSize}px`,
+                        fontWeight: textObj.fontWeight || 'bold',
+                        color: textObj.color || '#334155',
+                        lineHeight: '1.4',
+                      }}
+                      title="Double-click to edit"
+                    >
+                      {textContent || <span className="opacity-40 italic">Text...</span>}
+                    </div>
+                  )}
 
                   {/* Hover toolbar */}
                   <div className="absolute -top-7 left-0 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity bg-white rounded-md shadow border border-slate-200 px-1 py-0.5" onPointerDown={(e) => e.stopPropagation()}>
