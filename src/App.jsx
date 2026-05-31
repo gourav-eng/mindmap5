@@ -6,9 +6,11 @@ import {
   Sparkles, PanelLeftClose, PanelLeft,
   Grid, Move, Copy, ArrowUp, ArrowDown, RefreshCw, LayoutList, MonitorSpeaker,
   MoreVertical, ImageIcon, ChevronUp, Scissors, ClipboardPaste,
-  Lock, Shield, Eye, EyeOff, GitBranch, Map, Timer
+  Lock, Shield, Eye, EyeOff, GitBranch, Map, Timer,
+  CheckSquare, ListTodo
 } from 'lucide-react';
 import MiniMap from './MiniMap';
+import TaskPanel from './TaskPanel';
 
 // --- Premium Color Themes (10 colors) ---
 const THEMES = {
@@ -376,6 +378,19 @@ export default function WorkflowApp() {
   const [showMiniMap, setShowMiniMap] = useState(false);
   const [miniMapOpenedViaShortcut, setMiniMapOpenedViaShortcut] = useState(false);
 
+  // --- Task System States ---
+  const [tasks, setTasks] = useState([]);
+  const [taskGroups, setTaskGroups] = useState([
+    { id: 'tg-today', name: 'Today', order: 0 },
+    { id: 'tg-later', name: 'Later', order: 1 },
+    { id: 'tg-waiting', name: 'Waiting', order: 2 },
+    { id: 'tg-research', name: 'Research', order: 3 },
+    { id: 'tg-followup', name: 'Follow-up', order: 4 },
+  ]);
+  const [cardTaskLinks, setCardTaskLinks] = useState([]);
+  const [showTaskPanel, setShowTaskPanel] = useState(false);
+  const [taskPanelMode, setTaskPanelMode] = useState('split');
+
   // --- Timer States ---
   const [showTimer, setShowTimer] = useState(false);
   const [timerSeconds, setTimerSeconds] = useState(0);
@@ -630,6 +645,11 @@ export default function WorkflowApp() {
             setWorkspaces(initialWorkspaces);
             setActiveTab(activeProj.activeTab || (initialWorkspaces.length > 0 ? initialWorkspaces[0].id : ''));
             setNextId(activeProj.nextId || 10);
+
+            // Load task data
+            if (activeProj.tasks) setTasks(activeProj.tasks);
+            if (activeProj.taskGroups) setTaskGroups(activeProj.taskGroups);
+            if (activeProj.cardTaskLinks) setCardTaskLinks(activeProj.cardTaskLinks);
             
             // Default project is always password-free
             const isDefaultProject = activeProj.id === resolvedDefaultId;
@@ -776,7 +796,7 @@ export default function WorkflowApp() {
           const now = Date.now();
           const lastMod = p.lastModified || 0;
           const shouldUpdateTime = (now - lastMod) > 60000;
-          return { ...p, workspaces, activeTab, nextId, ...(shouldUpdateTime ? { lastModified: now } : {}) };
+          return { ...p, workspaces, activeTab, nextId, tasks, taskGroups, cardTaskLinks, ...(shouldUpdateTime ? { lastModified: now } : {}) };
         });
         return updated;
       });
@@ -788,7 +808,7 @@ export default function WorkflowApp() {
       }, 500);
       localStorage.setItem('nexus-active-project', activeProjectId);
     }
-  }, [workspaces, activeTab, nextId, initialized, activeProjectId]);
+  }, [workspaces, activeTab, nextId, tasks, taskGroups, cardTaskLinks, initialized, activeProjectId]);
 
   useEffect(() => {
     if (initialized && activeProjectId) {
@@ -1267,6 +1287,27 @@ export default function WorkflowApp() {
     window.addEventListener('keydown', handleMiniMapKey);
     return () => window.removeEventListener('keydown', handleMiniMapKey);
   }, []);
+
+  // --- T key toggles task panel, Shift+T links focused card to tasks ---
+  useEffect(() => {
+    const handleTaskKey = (e) => {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.key === 'T' && e.shiftKey) {
+        e.preventDefault();
+        if (focusedNodeId) {
+          addTaskFromCardRef.current(focusedNodeId);
+        }
+        return;
+      }
+      if ((e.key === 't' || e.key === 'T') && !e.shiftKey) {
+        e.preventDefault();
+        setShowTaskPanel(prev => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleTaskKey);
+    return () => window.removeEventListener('keydown', handleTaskKey);
+  }, [focusedNodeId]);
 
   // --- N key creates new card ---
   useEffect(() => {
@@ -2572,7 +2613,8 @@ export default function WorkflowApp() {
       id: nextId.toString(),
       x: targetX, y: targetY,
       title: 'New Card', content: '', theme: 'blue',
-      groupId: targetGroupId, cloneSourceId: null
+      groupId: targetGroupId, cloneSourceId: null,
+      linkedTaskIds: []
     };
     
     updateActiveWorkspace(ws => {
@@ -2587,6 +2629,72 @@ export default function WorkflowApp() {
 
   const addNodeRef = useRef(addNode);
   useEffect(() => { addNodeRef.current = addNode; });
+
+  // --- Task System Functions ---
+  const addTaskFromCard = (cardId) => {
+    const card = nodes.find(n => n.id === cardId);
+    if (!card) return;
+    const taskId = `task-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const defaultGroup = taskGroups.length > 0 ? taskGroups.sort((a, b) => a.order - b.order)[0].id : 'tg-today';
+    const newTask = {
+      id: taskId,
+      title: card.title || 'Untitled Task',
+      status: 'not_started',
+      groupId: defaultGroup,
+      note: '',
+      createdAt: Date.now(),
+    };
+    setTasks(prev => [...prev, newTask]);
+    setCardTaskLinks(prev => [...prev, { cardId, taskId }]);
+    // Update card's linkedTaskIds
+    updateNode(cardId, { linkedTaskIds: [...(card.linkedTaskIds || []), taskId] });
+    // Open task panel if not open
+    if (!showTaskPanel) setShowTaskPanel(true);
+  };
+
+  const updateTask = (taskId, updates) => {
+    setTasks(prev => prev.map(t => t.id === taskId ? { ...t, ...updates } : t));
+  };
+
+  const deleteTask = (taskId) => {
+    const link = cardTaskLinks.find(l => l.taskId === taskId);
+    if (link) {
+      const card = nodes.find(n => n.id === link.cardId);
+      if (card) {
+        updateNode(link.cardId, { linkedTaskIds: (card.linkedTaskIds || []).filter(id => id !== taskId) });
+      }
+    }
+    setTasks(prev => prev.filter(t => t.id !== taskId));
+    setCardTaskLinks(prev => prev.filter(l => l.taskId !== taskId));
+  };
+
+  const toggleTaskStatus = (taskId) => {
+    setTasks(prev => prev.map(t => {
+      if (t.id !== taskId) return t;
+      const statusCycle = ['not_started', 'in_progress', 'completed', 'blocked'];
+      const currentIdx = statusCycle.indexOf(t.status);
+      const nextStatus = statusCycle[(currentIdx + 1) % statusCycle.length];
+      return { ...t, status: nextStatus };
+    }));
+  };
+
+  const moveTaskToGroup = (taskId, groupId) => {
+    setTasks(prev => prev.map(t => t.id === taskId ? { ...t, groupId } : t));
+  };
+
+  const reorderGroups = (fromIndex, toIndex) => {
+    if (toIndex < 0 || toIndex >= taskGroups.length) return;
+    setTaskGroups(prev => {
+      const sorted = [...prev].sort((a, b) => a.order - b.order);
+      const temp = sorted[fromIndex].order;
+      sorted[fromIndex] = { ...sorted[fromIndex], order: sorted[toIndex].order };
+      sorted[toIndex] = { ...sorted[toIndex], order: temp };
+      return sorted;
+    });
+  };
+
+  const addTaskFromCardRef = useRef(addTaskFromCard);
+  useEffect(() => { addTaskFromCardRef.current = addTaskFromCard; });
 
   const createGroup = (clientX, clientY) => {
     takeSnapshot();
@@ -3707,6 +3815,13 @@ export default function WorkflowApp() {
                 >
                   <Copy className="w-3.5 h-3.5" /> Show Clone Nodes
                 </button>
+                <button
+                  onClick={() => setShowTaskPanel(!showTaskPanel)}
+                  title="Tasks"
+                  className={`flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all mt-1.5 w-full ${showTaskPanel ? 'bg-emerald-100 text-emerald-700 border border-emerald-300' : 'bg-slate-100 text-slate-500 hover:text-slate-700 hover:bg-slate-200'}`}
+                >
+                  <ListTodo className="w-3.5 h-3.5" /> Tasks
+                </button>
               </div>
             </div>
 
@@ -3803,7 +3918,7 @@ export default function WorkflowApp() {
         {/* --- Main Workspace Canvas Area --- */}
         <main
           ref={workspaceRef}
-          className={`${showClonePanel ? 'flex-1 min-w-0' : 'flex-1'} relative overflow-hidden ${showClonePanel ? 'bg-[#1a1a2e]' : 'bg-[#1e1e2e]'} touch-none text-slate-800 transition-all duration-300`}
+          className={`${showTaskPanel && taskPanelMode === 'split' ? 'w-1/2' : showClonePanel ? 'flex-1 min-w-0' : 'flex-1'} relative overflow-hidden ${showClonePanel ? 'bg-[#1a1a2e]' : 'bg-[#1e1e2e]'} touch-none text-slate-800 transition-all duration-300`}
           onPointerDown={handlePointerDownMain}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
@@ -3815,7 +3930,7 @@ export default function WorkflowApp() {
           onTouchEnd={handleTouchEnd}
           onDragOver={(e) => e.preventDefault()}
           onDrop={handleCanvasImageDrop}
-          style={{ display: viewMode === 'canvas' ? undefined : 'none' }}
+          style={{ display: viewMode === 'canvas' && !(showTaskPanel && taskPanelMode === 'fullscreen') ? undefined : 'none' }}
         >
           {/* Panning grid backdrop */}
           <div className="absolute inset-0 canvas-grid-clickable cursor-crosshair active:cursor-grabbing opacity-60" style={{
@@ -4220,6 +4335,15 @@ export default function WorkflowApp() {
                     </div>
                   )}
 
+                  {/* Task status indicator */}
+                  {(node.linkedTaskIds && node.linkedTaskIds.length > 0) && (() => {
+                    const linkedTask = tasks.find(t => node.linkedTaskIds.includes(t.id));
+                    if (!linkedTask) return null;
+                    const statusColors = { not_started: 'bg-gray-400', in_progress: 'bg-blue-500', completed: 'bg-green-500', blocked: 'bg-amber-500' };
+                    const dotColor = statusColors[linkedTask.status] || 'bg-gray-400';
+                    return <div className={`absolute top-2 right-2 w-2.5 h-2.5 rounded-full ${dotColor}`} title={`Task: ${linkedTask.status.replace('_', ' ')}`} />;
+                  })()}
+
                   {/* Hover toolbar */}
                   <div className="absolute -top-8 right-1 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity bg-white rounded-md shadow border border-slate-200 px-1 py-0.5" onPointerDown={(e) => e.stopPropagation()}>
                     <button 
@@ -4485,6 +4609,9 @@ export default function WorkflowApp() {
               <button className="w-full text-left px-4 py-2 hover:bg-blue-50 text-xs font-semibold text-slate-700 flex items-center" onClick={() => { exportSelectedNodes([nodeContextMenu.nodeId]); setNodeContextMenu(null); }}>
                 <Download className="w-3.5 h-3.5 mr-2 text-blue-500" /> Export Branch
               </button>
+              <button className="w-full text-left px-4 py-2 hover:bg-emerald-50 text-xs font-semibold text-slate-700 flex items-center" onClick={() => { addTaskFromCard(nodeContextMenu.nodeId); setNodeContextMenu(null); }}>
+                <CheckSquare className="w-3.5 h-3.5 mr-2 text-emerald-500" /> Add to Tasks
+              </button>
               
               <div className="h-px bg-slate-150 my-1 w-full" />
               
@@ -4711,6 +4838,25 @@ export default function WorkflowApp() {
             </>
           );
         })()}
+
+        {/* --- Task Panel --- */}
+        {showTaskPanel && viewMode === 'canvas' && (
+          <TaskPanel
+            tasks={tasks}
+            taskGroups={taskGroups}
+            cardTaskLinks={cardTaskLinks}
+            nodes={nodes}
+            showTaskPanel={showTaskPanel}
+            taskPanelMode={taskPanelMode}
+            setTaskPanelMode={setTaskPanelMode}
+            onClose={() => setShowTaskPanel(false)}
+            onUpdateTask={updateTask}
+            onDeleteTask={deleteTask}
+            onToggleTaskStatus={toggleTaskStatus}
+            onMoveTaskToGroup={moveTaskToGroup}
+            onReorderGroups={reorderGroups}
+          />
+        )}
 
         {/* --- Outline Backlog Board View --- */}
         {viewMode === 'outline' && (
