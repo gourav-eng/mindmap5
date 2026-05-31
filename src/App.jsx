@@ -4,7 +4,7 @@ import {
   FileText, Network, FolderOpen, Palette, Check, ZoomIn, ZoomOut, Focus,
   Download, Upload, Undo2, Redo2, Layers, Link2, ExternalLink,
   Sparkles, PanelLeftClose, PanelLeft,
-  Grid, Move, Copy, ArrowUp, ArrowDown, RefreshCw, LayoutList, MonitorSpeaker,
+  Copy, ArrowUp, ArrowDown, RefreshCw, LayoutList, MonitorSpeaker,
   MoreVertical, ImageIcon, ChevronUp, Scissors, ClipboardPaste,
   Lock, Shield, Eye, EyeOff, GitBranch, Map, Timer,
   CheckSquare, ListTodo
