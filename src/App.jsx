@@ -706,6 +706,9 @@ export default function WorkflowApp() {
   const logoTapRef = useRef({ count: 0, lastTap: 0 });
   const saveTimerRef = useRef(null);
   const projectsRef = useRef([]);
+  const focusedNodeIdRef = useRef(null);
+  const focusedGroupIdRef = useRef(null);
+  const selectedNodeIdsRef = useRef([]);
 
   // --- Touch Gesture Refs (Pinch-to-Zoom) ---
   const touchRef = useRef({ isPinching: false, lastDist: 0, lastMidX: 0, lastMidY: 0 });
@@ -1048,6 +1051,11 @@ export default function WorkflowApp() {
   useEffect(() => {
     projectsRef.current = projects;
   }, [projects]);
+
+  // Keep refs in sync for keyboard shortcut handlers (avoids re-registration)
+  useEffect(() => { focusedNodeIdRef.current = focusedNodeId; }, [focusedNodeId]);
+  useEffect(() => { focusedGroupIdRef.current = focusedGroupId; }, [focusedGroupId]);
+  useEffect(() => { selectedNodeIdsRef.current = selectedNodeIds; }, [selectedNodeIds]);
 
   useEffect(() => {
     if (initialized && activeProjectId) {
@@ -1463,35 +1471,37 @@ export default function WorkflowApp() {
     }
   }, [takeSnapshot, nextId, transform, updateActiveWorkspace, setWorkspaces, activeTab]);
 
+  // --- Core keyboard shortcuts (Ctrl/Cmd combos) ---
   useEffect(() => {
-    const handleKeyDown = (e) => {
+    const handleCoreKeys = (e) => {
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      const key = e.key.toLowerCase();
+      if (key === 'z') {
         e.preventDefault();
         if (e.shiftKey) performRedo();
         else performUndo();
-      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
+      } else if (key === 'y') {
         e.preventDefault();
         performRedo();
-      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c') {
-        if (focusedGroupId) {
+      } else if (key === 'c') {
+        if (focusedGroupIdRef.current) {
           e.preventDefault();
-          copyGroup(focusedGroupId);
-        } else if (focusedNodeId) {
+          copyGroup(focusedGroupIdRef.current);
+        } else if (focusedNodeIdRef.current) {
           e.preventDefault();
-          copyNode(focusedNodeId);
+          copyNode(focusedNodeIdRef.current);
         }
-      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'x') {
-        if (focusedGroupId) {
+      } else if (key === 'x') {
+        if (focusedGroupIdRef.current) {
           e.preventDefault();
-          cutGroup(focusedGroupId);
-        } else if (focusedNodeId) {
+          cutGroup(focusedGroupIdRef.current);
+        } else if (focusedNodeIdRef.current) {
           e.preventDefault();
-          cutNode(focusedNodeId);
+          cutNode(focusedNodeIdRef.current);
         }
-      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') {
+      } else if (key === 'v') {
         e.preventDefault();
-        // Prefer group clipboard if it exists
         if (localStorage.getItem('nexus-clipboard-group')) {
           pasteGroup();
         } else {
@@ -1499,115 +1509,91 @@ export default function WorkflowApp() {
         }
       }
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [performUndo, performRedo, copyNode, cutNode, pasteNode, copyGroup, cutGroup, pasteGroup, focusedNodeId, focusedGroupId]);
+    window.addEventListener('keydown', handleCoreKeys);
+    return () => window.removeEventListener('keydown', handleCoreKeys);
+  }, [performUndo, performRedo, copyNode, cutNode, pasteNode, copyGroup, cutGroup, pasteGroup]);
 
-  // --- Escape key clears multi-selection ---
+  // --- Single-key shortcuts and arrow key movement ---
   useEffect(() => {
-    const handleEscapeKey = (e) => {
-      if (e.key === 'Escape' && selectedNodeIds.length > 0) {
+    const handleSingleKeys = (e) => {
+      // Escape clears multi-selection (no input guard needed)
+      if (e.key === 'Escape' && selectedNodeIdsRef.current.length > 0) {
         setSelectedNodeIds([]);
+        return;
       }
-    };
-    window.addEventListener('keydown', handleEscapeKey);
-    return () => window.removeEventListener('keydown', handleEscapeKey);
-  }, [selectedNodeIds]);
 
-  // --- M key toggles mini map ---
-  useEffect(() => {
-    const handleMiniMapKey = (e) => {
-      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-      if (e.key === 'm' || e.key === 'M') {
-        if (e.ctrlKey || e.metaKey || e.altKey) return;
+      // Arrow keys move selected nodes
+      if (selectedNodeIdsRef.current.length > 0) {
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
+        const STEP = 20;
+        let dx = 0, dy = 0;
+        if (e.key === 'ArrowUp') dy = -STEP;
+        else if (e.key === 'ArrowDown') dy = STEP;
+        else if (e.key === 'ArrowLeft') dx = -STEP;
+        else if (e.key === 'ArrowRight') dx = STEP;
+        if (dx !== 0 || dy !== 0) {
+          e.preventDefault();
+          takeSnapshot();
+          updateActiveWorkspace(ws => {
+            const ids = selectedNodeIdsRef.current;
+            const updatedNodes = ws.nodes.map(n => {
+              if (ids.includes(n.id)) {
+                return { ...n, x: n.x + dx, y: n.y + dy };
+              }
+              return n;
+            });
+            return { nodes: updatedNodes, groups: computeLayout(ws.groups, updatedNodes) };
+          });
+          return;
+        }
+      }
+
+      // Guard: skip if typing in input fields
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT' || e.target.isContentEditable) return;
+      // Skip if any modifier (Ctrl/Meta/Alt) is held (except Shift for T)
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+      // M key toggles mini map
+      if ((e.key === 'm' || e.key === 'M') && !e.shiftKey) {
         setShowMiniMap(prev => {
           const next = !prev;
           setMiniMapOpenedViaShortcut(next);
           return next;
         });
+        return;
       }
-    };
-    window.addEventListener('keydown', handleMiniMapKey);
-    return () => window.removeEventListener('keydown', handleMiniMapKey);
-  }, []);
 
-  // --- T key toggles task panel, Shift+T links focused card to tasks ---
-  useEffect(() => {
-    const handleTaskKey = (e) => {
-      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      // T key toggles task panel, Shift+T links focused card to tasks
       if (e.key === 'T' && e.shiftKey) {
         e.preventDefault();
-        if (focusedNodeId) {
-          addTaskFromCardRef.current(focusedNodeId);
+        if (focusedNodeIdRef.current) {
+          addTaskFromCardRef.current(focusedNodeIdRef.current);
         }
         return;
       }
       if ((e.key === 't' || e.key === 'T') && !e.shiftKey) {
         e.preventDefault();
         setShowTaskPanel(prev => !prev);
+        return;
       }
-    };
-    window.addEventListener('keydown', handleTaskKey);
-    return () => window.removeEventListener('keydown', handleTaskKey);
-  }, [focusedNodeId]);
 
-  // --- S key toggles sidebar ---
-  useEffect(() => {
-    const handleSidebarKey = (e) => {
-      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-      if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
-      if (e.key === 's') {
+      // S key toggles sidebar
+      if (e.key === 's' && !e.shiftKey) {
         e.preventDefault();
         setShowSidebar(prev => !prev);
+        return;
       }
-    };
-    window.addEventListener('keydown', handleSidebarKey);
-    return () => window.removeEventListener('keydown', handleSidebarKey);
-  }, []);
 
-  // --- N key creates new card ---
-  useEffect(() => {
-    const handleNewCardKey = (e) => {
-      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT' || e.target.isContentEditable) return;
-      if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+      // N key creates new card
       if (e.key === 'n' || e.key === 'N') {
         e.preventDefault();
         addNodeRef.current();
+        return;
       }
     };
-    window.addEventListener('keydown', handleNewCardKey);
-    return () => window.removeEventListener('keydown', handleNewCardKey);
-  }, []);
-
-  // --- Arrow key movement for selected nodes ---
-  useEffect(() => {
-    const handleArrowKeys = (e) => {
-      if (selectedNodeIds.length === 0) return;
-      // Don't capture if user is typing in an input/textarea
-      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
-      const STEP = 20;
-      let dx = 0, dy = 0;
-      if (e.key === 'ArrowUp') dy = -STEP;
-      else if (e.key === 'ArrowDown') dy = STEP;
-      else if (e.key === 'ArrowLeft') dx = -STEP;
-      else if (e.key === 'ArrowRight') dx = STEP;
-      else return;
-      e.preventDefault();
-      takeSnapshot();
-      updateActiveWorkspace(ws => {
-        const updatedNodes = ws.nodes.map(n => {
-          if (selectedNodeIds.includes(n.id)) {
-            return { ...n, x: n.x + dx, y: n.y + dy };
-          }
-          return n;
-        });
-        return { nodes: updatedNodes, groups: computeLayout(ws.groups, updatedNodes) };
-      });
-    };
-    window.addEventListener('keydown', handleArrowKeys);
-    return () => window.removeEventListener('keydown', handleArrowKeys);
-  }, [selectedNodeIds, takeSnapshot, updateActiveWorkspace]);
+    window.addEventListener('keydown', handleSingleKeys);
+    return () => window.removeEventListener('keydown', handleSingleKeys);
+  }, [takeSnapshot, updateActiveWorkspace]);
 
   // --- Clear selection on workspace tab change ---
   useEffect(() => {
@@ -3583,8 +3569,6 @@ export default function WorkflowApp() {
     };
   };
 
-  const stats = useMemo(() => ({ total: nodes.length }), [nodes]);
-
   if (!initialized || !activeWs) return null;
 
 
@@ -4191,7 +4175,7 @@ export default function WorkflowApp() {
               <div className="bg-slate-50 rounded-xl p-4 border border-slate-100 cursor-pointer select-none" onClick={handleLogoTap}>
                 <div className="flex justify-between items-center">
                   <span className="text-xs font-bold text-slate-500">Total Cards</span>
-                  <span className="text-sm font-bold text-indigo-600">{stats.total}</span>
+                  <span className="text-sm font-bold text-indigo-600">{nodes.length}</span>
                 </div>
               </div>
             </div>
