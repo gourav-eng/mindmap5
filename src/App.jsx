@@ -7,7 +7,7 @@ import {
   Grid, Move, Copy, ArrowUp, ArrowDown, RefreshCw, LayoutList, MonitorSpeaker,
   MoreVertical, ImageIcon, ChevronUp, Scissors, ClipboardPaste,
   Lock, Shield, Eye, EyeOff, GitBranch, Map, Timer,
-  CheckSquare, ListTodo
+  CheckSquare, ListTodo, Type
 } from 'lucide-react';
 import MiniMap from './MiniMap';
 import TaskPanel from './TaskPanel';
@@ -184,7 +184,8 @@ const defaultWorkspaces = [
       { id: 'e2', source: '2', target: '3' },
       { id: 'e3', source: '3', target: '4' }
     ],
-    images: []
+    images: [],
+    textObjects: []
   }
 ];
 
@@ -333,6 +334,7 @@ export default function WorkflowApp() {
   const [draggingNode, setDraggingNode] = useState(null);
   const [draggingGroup, setDraggingGroup] = useState(null);
   const [draggingImage, setDraggingImage] = useState(null);
+  const [draggingText, setDraggingText] = useState(null);
   const [resizingGroup, setResizingGroup] = useState(null);
   const [dragHoveredGroupId, setDragHoveredGroupId] = useState(null);
 
@@ -2354,8 +2356,16 @@ export default function WorkflowApp() {
         currentX: draggingImage.initialX + dx,
         currentY: draggingImage.initialY + dy
       }));
+    } else if (draggingText) {
+      const dx = (e.clientX - draggingText.startX) / transform.scale;
+      const dy = (e.clientY - draggingText.startY) / transform.scale;
+      setDraggingText(prev => ({
+        ...prev,
+        currentX: draggingText.initialX + dx,
+        currentY: draggingText.initialY + dy
+      }));
     }
-  }, [draggingNode, draggingGroup, draggingImage, resizingGroup, isPanning, panStart, transform.scale, getWorkspaceCoords, getSpatiallyHoveredGroup, getSpatiallyHoveredGroupForGroup, updateActiveWorkspace, isMultiSelecting, selectionBox, nodes, getNodeDimensions]);
+  }, [draggingNode, draggingGroup, draggingImage, draggingText, resizingGroup, isPanning, panStart, transform.scale, getWorkspaceCoords, getSpatiallyHoveredGroup, getSpatiallyHoveredGroupForGroup, updateActiveWorkspace, isMultiSelecting, selectionBox, nodes, getNodeDimensions]);
 
 
   const handlePointerUp = useCallback(() => {
@@ -2527,6 +2537,21 @@ export default function WorkflowApp() {
       }
     }
 
+    if (draggingText) {
+      if (draggingText.currentX !== draggingText.initialX || draggingText.currentY !== draggingText.initialY) {
+        updateActiveWorkspace(ws => ({
+          textObjects: (ws.textObjects || []).map(t => t.id === draggingText.id
+            ? { ...t, x: draggingText.currentX, y: draggingText.currentY }
+            : t)
+        }));
+        if (dragSnapshot.current) {
+          const snapshotToSave = dragSnapshot.current;
+          const newPast = [...pastRef.current, snapshotToSave];
+          updateHistory(newPast, []);
+        }
+      }
+    }
+
     setDraggingNode(null);
     draggingNodeRef.current = null;
     setDraggingGroup(null);
@@ -2536,8 +2561,9 @@ export default function WorkflowApp() {
     setConnectHoverNodeId(null);
     setIsPanning(false);
     setDraggingImage(null);
+    setDraggingText(null);
     dragSnapshot.current = null;
-  }, [draggingNode, draggingGroup, draggingImage, resizingGroup, dragHoveredGroupId, updateActiveWorkspace, updateHistory, isMultiSelecting, getNodeDimensions]);
+  }, [draggingNode, draggingGroup, draggingImage, draggingText, resizingGroup, dragHoveredGroupId, updateActiveWorkspace, updateHistory, isMultiSelecting, getNodeDimensions]);
 
 
   // --- Node, Edge, and Group Creators ---
@@ -2659,6 +2685,48 @@ export default function WorkflowApp() {
     setNextId(prev => prev + 1);
   };
 
+  const addTextObject = (clientX, clientY) => {
+    takeSnapshot();
+    const rect = workspaceRef.current.getBoundingClientRect();
+    let targetX, targetY;
+
+    if (clientX !== undefined && clientY !== undefined) {
+      targetX = (clientX - rect.left - transform.x) / transform.scale;
+      targetY = (clientY - rect.top - transform.y) / transform.scale;
+    } else {
+      targetX = (rect.width / 2 - transform.x) / transform.scale - 80;
+      targetY = (rect.height / 2 - transform.y) / transform.scale - 20;
+    }
+
+    const newText = {
+      id: `txt-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      x: targetX,
+      y: targetY,
+      text: 'Text',
+      fontSize: 18,
+      color: '#334155',
+      fontWeight: 'bold',
+    };
+
+    updateActiveWorkspace(ws => ({
+      textObjects: [...(ws.textObjects || []), newText]
+    }));
+  };
+
+  const updateTextObject = (id, updates) => {
+    updateActiveWorkspace(ws => ({
+      textObjects: (ws.textObjects || []).map(t => t.id === id ? { ...t, ...updates } : t)
+    }));
+  };
+
+  const deleteTextObject = (id) => {
+    takeSnapshot();
+    updateActiveWorkspace(ws => ({
+      textObjects: (ws.textObjects || []).filter(t => t.id !== id),
+      edges: ws.edges.filter(e => e.source !== id && e.target !== id)
+    }));
+  };
+
   const addNodeRef = useRef(addNode);
   useEffect(() => { addNodeRef.current = addNode; });
 
@@ -2744,6 +2812,10 @@ export default function WorkflowApp() {
     // Move tasks from deleted group to the first available group
     setTasks(prev => prev.map(t => t.groupId === groupId ? { ...t, groupId: targetGroup.id } : t));
     setTaskGroups(prev => prev.filter(g => g.id !== groupId));
+  };
+
+  const updateTaskGroup = (groupId, updates) => {
+    setTaskGroups(prev => prev.map(g => g.id === groupId ? { ...g, ...updates } : g));
   };
 
   const locateCard = (cardId) => {
@@ -3291,6 +3363,18 @@ export default function WorkflowApp() {
   const getConnectionPoint = (nodeId, isSource) => {
     const node = nodes.find(n => n.id === nodeId);
     if (!node) {
+      // Check if it's a text object
+      const textObj = (activeWs?.textObjects || []).find(t => t.id === nodeId);
+      if (textObj) {
+        const txtX = draggingText?.id === textObj.id ? draggingText.currentX : textObj.x;
+        const txtY = draggingText?.id === textObj.id ? draggingText.currentY : textObj.y;
+        const estWidth = Math.max(60, (textObj.text || '').length * (textObj.fontSize || 18) * 0.6);
+        const estHeight = (textObj.fontSize || 18) + 12;
+        return {
+          x: isSource ? txtX + estWidth : txtX,
+          y: txtY + estHeight / 2
+        };
+      }
       // Check if it's an image object
       const img = (activeWs?.images || []).find(i => i.id === nodeId);
       if (img) {
@@ -4177,7 +4261,7 @@ export default function WorkflowApp() {
               })}
               
               {connecting && (() => {
-                const sourceEntity = nodes.find(n => n.id === connecting.sourceId) || (activeWs?.images || []).find(i => i.id === connecting.sourceId) || groups.find(g => g.id === connecting.sourceId);
+                const sourceEntity = nodes.find(n => n.id === connecting.sourceId) || (activeWs?.textObjects || []).find(t => t.id === connecting.sourceId) || (activeWs?.images || []).find(i => i.id === connecting.sourceId) || groups.find(g => g.id === connecting.sourceId);
                 const strokeColor = THEMES[sourceEntity?.theme || 'blue'].line;
                 return (
                   <path d={drawCurve(connecting.startX, connecting.startY, connecting.currentX, connecting.currentY)} stroke={strokeColor} strokeWidth={3} strokeDasharray="8,6" fill="none" className="animate-[dash_1s_linear_infinite]" />
@@ -4252,6 +4336,135 @@ export default function WorkflowApp() {
                       setConnecting({ sourceId: img.id, startX: img.x + imgW, startY: img.y + imgH / 2, currentX: coords.x, currentY: coords.y });
                     }}
                   />
+                </div>
+              );
+            })}
+
+            {/* --- Canvas Text Objects --- */}
+            {(activeWs?.textObjects || []).map(textObj => {
+              const txtX = draggingText?.id === textObj.id ? draggingText.currentX : textObj.x;
+              const txtY = draggingText?.id === textObj.id ? draggingText.currentY : textObj.y;
+              const fontSize = textObj.fontSize || 18;
+              const estWidth = Math.max(60, (textObj.text || '').length * fontSize * 0.6 + 24);
+              const estHeight = fontSize + 16;
+
+              return (
+                <div
+                  key={textObj.id}
+                  className="absolute pointer-events-auto group cursor-grab active:cursor-grabbing"
+                  style={{
+                    left: txtX,
+                    top: txtY,
+                    zIndex: draggingText?.id === textObj.id ? 9999 : 45
+                  }}
+                  onPointerDown={(e) => {
+                    if (e.target.tagName === 'INPUT' || e.target.closest('button')) return;
+                    e.stopPropagation();
+                    dragSnapshot.current = JSON.parse(JSON.stringify(stateRef.current));
+                    setDraggingText({
+                      id: textObj.id,
+                      startX: e.clientX,
+                      startY: e.clientY,
+                      initialX: textObj.x,
+                      initialY: textObj.y,
+                      currentX: textObj.x,
+                      currentY: textObj.y
+                    });
+                  }}
+                  onPointerUp={(e) => {
+                    if (connecting && connecting.sourceId !== textObj.id) {
+                      e.stopPropagation();
+                      const exists = edges.some(edge => edge.source === connecting.sourceId && edge.target === textObj.id);
+                      if (!exists) {
+                        takeSnapshot();
+                        updateActiveWorkspace(ws => ({ edges: [...ws.edges, { id: `e-${Date.now()}`, source: connecting.sourceId, target: textObj.id }] }));
+                      }
+                      setConnecting(null);
+                      setConnectHoverNodeId(null);
+                    }
+                  }}
+                >
+                  {/* Text content - editable on double click */}
+                  <input
+                    className="bg-transparent focus:outline-none focus:bg-white/80 focus:ring-1 focus:ring-indigo-300 rounded px-2 py-1 cursor-grab active:cursor-grabbing min-w-[40px]"
+                    style={{
+                      fontSize: `${fontSize}px`,
+                      fontWeight: textObj.fontWeight || 'bold',
+                      color: textObj.color || '#334155',
+                      width: `${estWidth}px`,
+                    }}
+                    value={textObj.text || ''}
+                    onChange={(e) => updateTextObject(textObj.id, { text: e.target.value })}
+                    onFocus={() => takeSnapshot()}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    placeholder="Text..."
+                  />
+
+                  {/* Hover toolbar */}
+                  <div className="absolute -top-7 left-0 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity bg-white rounded-md shadow border border-slate-200 px-1 py-0.5" onPointerDown={(e) => e.stopPropagation()}>
+                    <select
+                      value={fontSize}
+                      onChange={(e) => updateTextObject(textObj.id, { fontSize: parseInt(e.target.value) })}
+                      className="text-[10px] bg-transparent border-none outline-none text-slate-600 cursor-pointer"
+                      onPointerDown={(e) => e.stopPropagation()}
+                    >
+                      {[12, 14, 16, 18, 20, 24, 28, 32, 40, 48, 56, 64].map(s => (
+                        <option key={s} value={s}>{s}px</option>
+                      ))}
+                    </select>
+                    <input
+                      type="color"
+                      value={textObj.color || '#334155'}
+                      onChange={(e) => updateTextObject(textObj.id, { color: e.target.value })}
+                      className="w-5 h-5 rounded cursor-pointer border-0 p-0"
+                      onPointerDown={(e) => e.stopPropagation()}
+                      title="Text color"
+                    />
+                    <button
+                      onClick={(e) => { e.stopPropagation(); updateTextObject(textObj.id, { fontWeight: textObj.fontWeight === 'bold' ? 'normal' : 'bold' }); }}
+                      className={`p-0.5 rounded text-xs font-bold ${textObj.fontWeight === 'bold' ? 'bg-slate-200 text-slate-800' : 'text-slate-400 hover:text-slate-600'}`}
+                      title="Bold"
+                    >
+                      B
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); deleteTextObject(textObj.id); }}
+                      className="p-0.5 hover:bg-red-100 hover:text-red-600 rounded text-slate-400"
+                      title="Delete"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+
+                  {/* Connection Ports */}
+                  <div
+                    className={`absolute left-0 top-1/2 -translate-x-1/2 -translate-y-1/2 w-6 h-6 rounded-full cursor-crosshair z-30 flex items-center justify-center ${connecting ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'} transition-all`}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onPointerUp={(e) => {
+                      e.stopPropagation();
+                      if (connecting && connecting.sourceId !== textObj.id) {
+                        const exists = edges.some(edge => edge.source === connecting.sourceId && edge.target === textObj.id);
+                        if (!exists) {
+                          takeSnapshot();
+                          updateActiveWorkspace(ws => ({ edges: [...ws.edges, { id: `e-${Date.now()}`, source: connecting.sourceId, target: textObj.id }] }));
+                        }
+                      }
+                      setConnecting(null);
+                      setConnectHoverNodeId(null);
+                    }}
+                  >
+                    <div className="w-2.5 h-2.5 rounded-full bg-indigo-500 border-2 border-white shadow" />
+                  </div>
+                  <div
+                    className={`absolute right-0 top-1/2 translate-x-1/2 -translate-y-1/2 w-6 h-6 rounded-full cursor-crosshair z-30 flex items-center justify-center ${connecting ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'} transition-all`}
+                    onPointerDown={(e) => {
+                      e.stopPropagation();
+                      const coords = getWorkspaceCoords(e);
+                      setConnecting({ sourceId: textObj.id, startX: txtX + estWidth, startY: txtY + estHeight / 2, currentX: coords.x, currentY: coords.y });
+                    }}
+                  >
+                    <div className="w-2.5 h-2.5 rounded-full bg-indigo-500 border-2 border-white shadow" />
+                  </div>
                 </div>
               );
             })}
@@ -4597,6 +4810,9 @@ export default function WorkflowApp() {
               <button className="w-full text-left px-4 py-2 hover:bg-indigo-50 hover:text-indigo-900 text-sm font-semibold text-slate-700 flex items-center" onClick={() => { addNode(contextMenu.clientX, contextMenu.clientY, null); setContextMenu(null); }}>
                 <Plus className="w-4 h-4 mr-2 text-indigo-600" /> Add Card Here
               </button>
+              <button className="w-full text-left px-4 py-2 hover:bg-indigo-50 hover:text-indigo-900 text-sm font-semibold text-slate-700 flex items-center" onClick={() => { addTextObject(contextMenu.clientX, contextMenu.clientY); setContextMenu(null); }}>
+                <Type className="w-4 h-4 mr-2 text-indigo-600" /> Add Text Here
+              </button>
               <button className="w-full text-left px-4 py-2 hover:bg-indigo-50 hover:text-indigo-900 text-sm font-semibold text-slate-700 flex items-center" onClick={() => { createGroup(contextMenu.clientX, contextMenu.clientY); setContextMenu(null); }}>
                 <Layers className="w-4 h-4 mr-2 text-indigo-600" /> Create Group Here
               </button>
@@ -4937,6 +5153,7 @@ export default function WorkflowApp() {
             onReorderGroups={reorderGroups}
             onAddGroup={addTaskGroup}
             onDeleteGroup={deleteTaskGroup}
+            onUpdateGroup={updateTaskGroup}
             onLocateCard={locateCard}
           />
         )}

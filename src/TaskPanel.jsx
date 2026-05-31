@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { 
   X, CheckSquare, ChevronUp, ChevronDown, 
   Maximize2, Minimize2, Circle, MessageSquare,
-  Plus, Trash2
+  Plus, Trash2, Palette
 } from 'lucide-react';
 
 const STATUS_OPTIONS = [
@@ -10,6 +10,17 @@ const STATUS_OPTIONS = [
   { value: 'in_progress', label: 'In Progress', color: 'bg-blue-500' },
   { value: 'completed', label: 'Completed', color: 'bg-green-500' },
   { value: 'blocked', label: 'Blocked', color: 'bg-amber-500' },
+];
+
+const GROUP_COLORS = [
+  { value: 'slate', label: 'Default', bg: 'bg-slate-100', border: 'border-slate-200', header: 'bg-slate-100', text: 'text-slate-700', dot: 'bg-slate-400' },
+  { value: 'blue', label: 'Blue', bg: 'bg-blue-50', border: 'border-blue-200', header: 'bg-blue-100', text: 'text-blue-800', dot: 'bg-blue-500' },
+  { value: 'green', label: 'Green', bg: 'bg-emerald-50', border: 'border-emerald-200', header: 'bg-emerald-100', text: 'text-emerald-800', dot: 'bg-emerald-500' },
+  { value: 'purple', label: 'Purple', bg: 'bg-purple-50', border: 'border-purple-200', header: 'bg-purple-100', text: 'text-purple-800', dot: 'bg-purple-500' },
+  { value: 'amber', label: 'Amber', bg: 'bg-amber-50', border: 'border-amber-200', header: 'bg-amber-100', text: 'text-amber-800', dot: 'bg-amber-500' },
+  { value: 'rose', label: 'Rose', bg: 'bg-rose-50', border: 'border-rose-200', header: 'bg-rose-100', text: 'text-rose-800', dot: 'bg-rose-500' },
+  { value: 'teal', label: 'Teal', bg: 'bg-teal-50', border: 'border-teal-200', header: 'bg-teal-100', text: 'text-teal-800', dot: 'bg-teal-500' },
+  { value: 'orange', label: 'Orange', bg: 'bg-orange-50', border: 'border-orange-200', header: 'bg-orange-100', text: 'text-orange-800', dot: 'bg-orange-500' },
 ];
 
 export default function TaskPanel({
@@ -28,11 +39,13 @@ export default function TaskPanel({
   onReorderGroups,
   onAddGroup,
   onDeleteGroup,
+  onUpdateGroup,
   onLocateCard,
 }) {
   const [expandedNotes, setExpandedNotes] = useState({});
   const [newGroupName, setNewGroupName] = useState('');
   const [showAddGroup, setShowAddGroup] = useState(false);
+  const [colorPickerGroupId, setColorPickerGroupId] = useState(null);
 
   if (!showTaskPanel) return null;
 
@@ -127,13 +140,21 @@ export default function TaskPanel({
       <div className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-3">
         {sortedGroups.map((group, groupIndex) => {
           const groupTasks = getTasksForGroup(group.id);
+          const groupColor = GROUP_COLORS.find(c => c.value === group.color) || GROUP_COLORS[0];
           return (
-            <div key={group.id} className="bg-slate-50 rounded-lg border border-slate-200 overflow-hidden">
+            <div key={group.id} className={`${groupColor.bg} rounded-lg border ${groupColor.border} overflow-hidden`}>
               {/* Group Header */}
-              <div className="flex items-center justify-between px-3 py-2 bg-slate-100 border-b border-slate-200">
-                <span className="text-xs font-bold text-slate-700 uppercase tracking-wide">{group.name}</span>
+              <div className={`flex items-center justify-between px-3 py-2 ${groupColor.header} border-b ${groupColor.border} relative`}>
+                <span className={`text-xs font-bold ${groupColor.text} uppercase tracking-wide`}>{group.name}</span>
                 <div className="flex items-center gap-0.5">
                   <span className="text-[10px] text-slate-400 mr-1">{groupTasks.length}</span>
+                  <button
+                    onClick={() => setColorPickerGroupId(colorPickerGroupId === group.id ? null : group.id)}
+                    className={`p-0.5 rounded hover:bg-white/50 ${groupColor.text} transition-colors`}
+                    title="Change color"
+                  >
+                    <Palette className="w-3.5 h-3.5" />
+                  </button>
                   <button
                     onClick={() => onReorderGroups(groupIndex, groupIndex - 1)}
                     disabled={groupIndex === 0}
@@ -158,6 +179,21 @@ export default function TaskPanel({
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
                 </div>
+                {/* Color Picker Dropdown */}
+                {colorPickerGroupId === group.id && (
+                  <div className="absolute top-full right-2 mt-1 bg-white rounded-lg shadow-xl border border-slate-200 p-2 z-50 flex gap-1.5 flex-wrap max-w-[180px]">
+                    {GROUP_COLORS.map(color => (
+                      <button
+                        key={color.value}
+                        onClick={() => { onUpdateGroup(group.id, { color: color.value }); setColorPickerGroupId(null); }}
+                        className={`w-6 h-6 rounded-full ${color.dot} border-2 border-white shadow-sm hover:scale-110 transition-transform flex items-center justify-center`}
+                        title={color.label}
+                      >
+                        {group.color === color.value && <span className="text-white text-[8px] font-bold">✓</span>}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Task Items */}
