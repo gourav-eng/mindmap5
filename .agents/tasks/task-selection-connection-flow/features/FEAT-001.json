@@ -2,7 +2,7 @@
   "id": "FEAT-001",
   "type": "feat",
   "description": "Upgrade multi-selection to support all object types (cards, images, groups) using Shift+Click, and add a Connect action (keyboard shortcut 'C' + button in floating toolbar) that creates a connection between exactly 2 selected objects.",
-  "status": "in_progress",
+  "status": "completed",
   "steps": [
     "Step 1: Change multi-selection from Ctrl to Shift. In src/App.jsx, update the node onPointerDown handler (around line 4320-4325) that checks `e.ctrlKey || e.metaKey` for individual toggle-selection to instead check `e.shiftKey`. Also update the canvas background handler `handlePointerDownMain` (around line 2246) which starts drag-select with `if (e.ctrlKey || e.metaKey)` to instead use `if (e.shiftKey)`.",
     "Step 2: Expand selectedNodeIds to a universal selection array that can hold node IDs, group IDs, and image IDs. Rename is optional - can keep the name but allow it to hold any object ID. Update the selection box logic in handlePointerMove (around line 2260-2275) to also include images and groups that intersect the selection rectangle. For images: check if image bounding box overlaps selection box. For groups: check if group bounding box overlaps selection box.",
@@ -32,5 +32,5 @@
     "Run `cd /projects/sandbox/mindmap5 && npm run build` - should complete without errors"
   ],
   "blocked_reason": null,
-  "findings": ""
+  "findings": "Build passes cleanly with npm run build. All 9 steps implemented in src/App.jsx. No test framework exists so verification is build-only. The 'C' key shortcut is placed after the 'N' key handler and before the Arrow key handler. It does not conflict with Ctrl+C copy since it requires no modifier keys."
 }
