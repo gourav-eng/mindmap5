@@ -223,12 +223,15 @@ const getDescendants = (groupId, currentGroups, currentNodes) => {
 const computeLayout = (currentGroups, currentNodes) => {
   if (!currentGroups || currentGroups.length === 0) return currentGroups;
 
-  // Early return if no groups have child nodes or subgroups
-  const hasAnyChildren = currentGroups.some(g =>
-    currentNodes.some(n => n.groupId === g.id) ||
-    currentGroups.some(sg => sg.parentGroupId === g.id)
-  );
-  if (!hasAnyChildren) return currentGroups;
+  // Early return if no groups have child nodes or subgroups (O(n) check)
+  const groupIdsWithChildren = new Set();
+  for (const n of currentNodes) {
+    if (n.groupId) groupIdsWithChildren.add(n.groupId);
+  }
+  for (const g of currentGroups) {
+    if (g.parentGroupId) groupIdsWithChildren.add(g.parentGroupId);
+  }
+  if (groupIdsWithChildren.size === 0) return currentGroups;
 
   const getDepth = (g) => {
     let depth = 0;
@@ -571,6 +574,10 @@ const NodeCard = React.memo(function NodeCard({
   if (prevProps.openColorPicker !== nextProps.openColorPicker) return false;
   if (prevProps.openLinkPicker !== nextProps.openLinkPicker) return false;
   if (prevProps.index !== nextProps.index) return false;
+  if (prevProps.workspaces !== nextProps.workspaces) return false;
+  if (prevProps.tasks !== nextProps.tasks) return false;
+  if (prevProps.edges !== nextProps.edges) return false;
+  if (prevProps.nodeDims?.width !== nextProps.nodeDims?.width) return false;
   return true;
 });
 
@@ -629,6 +636,7 @@ export default function WorkflowApp() {
   const draggingNodeRef = useRef(null);
   const rafRef = useRef(null);
   const selectionRafRef = useRef(null);
+  const dragHoverRafRef = useRef(null);
 
   // --- Pan & Zoom States ---
   const [transform, setTransform] = useState({ x: 0, y: 0, scale: 1 });
@@ -2533,8 +2541,16 @@ export default function WorkflowApp() {
         });
       }
 
-      const activeGroupHoverId = getSpatiallyHoveredGroup(newX, newY, getNodeDimensions(nodes.find(n => n.id === draggingNode.id) || {}).width);
-      setDragHoveredGroupId(activeGroupHoverId);
+      if (!dragHoverRafRef.current) {
+        dragHoverRafRef.current = requestAnimationFrame(() => {
+          dragHoverRafRef.current = null;
+          const ref = draggingNodeRef.current;
+          if (ref) {
+            const activeGroupHoverId = getSpatiallyHoveredGroup(ref.currentX, ref.currentY, getNodeDimensions(nodes.find(n => n.id === ref.id) || {}).width);
+            setDragHoveredGroupId(activeGroupHoverId);
+          }
+        });
+      }
 
     } else if (draggingGroup) {
       const dx = (e.clientX - draggingGroup.startX) / transform.scale;
@@ -2549,14 +2565,19 @@ export default function WorkflowApp() {
         currentY: newY
       }));
 
-      const activeGroupHoverId = getSpatiallyHoveredGroupForGroup(
-        draggingGroup.id,
-        newX,
-        newY,
-        draggingGroup.width,
-        draggingGroup.height
-      );
-      setDragHoveredGroupId(activeGroupHoverId);
+      if (!dragHoverRafRef.current) {
+        dragHoverRafRef.current = requestAnimationFrame(() => {
+          dragHoverRafRef.current = null;
+          const activeGroupHoverId = getSpatiallyHoveredGroupForGroup(
+            draggingGroup.id,
+            newX,
+            newY,
+            draggingGroup.width,
+            draggingGroup.height
+          );
+          setDragHoveredGroupId(activeGroupHoverId);
+        });
+      }
 
     } else if (resizingGroup) {
       const dx = (e.clientX - resizingGroup.startX) / transform.scale;
@@ -3258,9 +3279,9 @@ export default function WorkflowApp() {
   };
 
   const clearAllNodes = () => { takeSnapshot(); updateActiveWorkspace(() => ({ nodes: [], edges: [], groups: [] })); setShowConfirmClear(false); };
-  const removeEdge = (edgeId) => { takeSnapshot(); updateActiveWorkspace(ws => ({ edges: ws.edges.filter(e => e.id !== edgeId) })); };
+  const removeEdge = useCallback((edgeId) => { takeSnapshot(); updateActiveWorkspace(ws => ({ edges: ws.edges.filter(e => e.id !== edgeId) })); }, [takeSnapshot, updateActiveWorkspace]);
 
-  const drawCurve = (x1, y1, x2, y2) => {
+  const drawCurve = useCallback((x1, y1, x2, y2) => {
     const dx = x2 - x1;
     const dy = y2 - y1;
     const dist = Math.hypot(dx, dy);
@@ -3281,7 +3302,7 @@ export default function WorkflowApp() {
       const sign = dy >= 0 ? -1 : 1;
       return `M ${x1} ${y1} C ${x1 + offset} ${y1 + sign * vertOffset}, ${x2 - offset} ${y2 + sign * vertOffset}, ${x2} ${y2}`;
     }
-  };
+  }, []);
 
   // --- Collision Overlap Disperser (Jitter) ---
   const disperseOverlappingNodes = () => {
@@ -3534,7 +3555,7 @@ export default function WorkflowApp() {
 
   const HEADER_CENTER_Y = 24;
 
-  const getConnectionPoint = (nodeId, isSource) => {
+  const getConnectionPoint = useCallback((nodeId, isSource) => {
     const node = nodes.find(n => n.id === nodeId);
     if (!node) {
       // Check if it's an image object
@@ -3567,7 +3588,7 @@ export default function WorkflowApp() {
       x: isSource ? coords.x + dims.width : coords.x,
       y: coords.y + HEADER_CENTER_Y
     };
-  };
+  }, [nodes, activeWs, groups, draggingImage, getLiveCoordinates, getNodeDimensions]);
 
   if (!initialized || !activeWs) return null;
 
