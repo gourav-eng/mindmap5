@@ -4551,6 +4551,13 @@ export default function WorkflowApp() {
               >
                 <Timer className="w-4 h-4 sm:w-5 sm:h-5" />
               </button>
+              <button
+                onClick={() => setShowTaskPanel(prev => !prev)}
+                className={`self-center p-2 rounded-lg shadow-lg border transition-colors ${showTaskPanel ? 'bg-indigo-50 text-indigo-600 border-indigo-200' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'}`}
+                title="Tasks (T)"
+              >
+                <ListTodo className="w-4 h-4 sm:w-5 sm:h-5" />
+              </button>
             </div>
 
             <div className="flex flex-col items-center bg-white rounded-lg shadow-lg border border-slate-200 p-1">
