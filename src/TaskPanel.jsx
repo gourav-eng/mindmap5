@@ -23,7 +23,7 @@ const GROUP_COLORS = [
   { value: 'orange', label: 'Orange', bg: 'bg-orange-50', border: 'border-orange-200', header: 'bg-orange-100', text: 'text-orange-800', dot: 'bg-orange-500' },
 ];
 
-export default function TaskPanel({
+const TaskPanel = React.memo(function TaskPanel({
   tasks,
   taskGroups,
   cardTaskLinks,
@@ -307,4 +307,6 @@ export default function TaskPanel({
       </div>
     </div>
   );
-}
+});
+
+export default TaskPanel;

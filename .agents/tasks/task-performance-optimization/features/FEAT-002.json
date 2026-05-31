@@ -1,0 +1,36 @@
+{
+  "id": "FEAT-002",
+  "type": "refactor",
+  "description": "Performance optimizations: memoization, reduced re-renders, throttled drag updates, and efficient state management across App.jsx, MiniMap.jsx, and TaskPanel.jsx",
+  "status": "in_progress",
+  "steps": [
+    "STEP 1 - Wrap MiniMap and TaskPanel with React.memo to prevent re-renders when their props haven't changed. MiniMap already receives stable references but re-renders on every parent state change. TaskPanel similarly re-renders unnecessarily.",
+    "STEP 2 - Extract the SVG connector/edge rendering into a memoized component (ConnectorLayer or similar) inside App.jsx or as a small inline component wrapped with React.memo. The edge rendering block (around line 4150-4190 in the render) re-renders on every pointer move during drag due to the parent re-rendering. The memoized component should accept edges, nodes, groups, draggingNode, draggingGroup, draggingImage, and the relevant helper functions (getConnectionPoint, drawCurve, removeEdge) as props and only re-render when those specific values change.",
+    "STEP 3 - Extract the individual card/node rendering into a memoized NodeCard component (React.memo). Currently each node is rendered inline in the nodes.map() loop. The component should accept: node, theme, isDragging, isFocused, isSelected, connectHoverNodeId, connecting, coords (displayX/displayY), nodeDims, and all handlers. Use React.memo with a custom comparison to skip re-render when the node's relevant props haven't changed. This prevents ALL cards from re-rendering when only one card is being dragged.",
+    "STEP 4 - Memoize expensive computed values in App.jsx: (a) memoize 'activeWs' derivation with useMemo dependent on [workspaces, activeTab], (b) memoize 'nodes', 'edges', 'groups' derivation from activeWs with useMemo, (c) memoize the 'stats' computation with useMemo dependent on [nodes].",
+    "STEP 5 - Optimize handlePointerMove: During drag operations, the handler calls setDraggingNode which triggers a full re-render. Instead, store drag position ONLY in the ref (draggingNodeRef) during moves and use requestAnimationFrame to batch visual updates. Update the state only at lower frequency or use a ref-based rendering approach for the dragged node's position. Specifically: (a) in handlePointerMove for draggingNode, update ONLY draggingNodeRef.current and use a rAF-throttled state update, (b) for the dragged node's display coordinates, read from draggingNodeRef.current directly.",
+    "STEP 6 - Throttle MiniMap updates: MiniMap receives 'transform' as a prop and re-renders on every pan/zoom frame. Add internal throttling in MiniMap.jsx using requestAnimationFrame or a 100ms interval to limit visual updates. Alternatively, pass transform via a ref and use a polling interval inside MiniMap to read the latest value.",
+    "STEP 7 - Optimize the computeLayout function: It's called on every node position change (including during drag). Add an early-return check: if no groups have child nodes or subgroups that changed position, skip the expensive computation. Also memoize the result when inputs haven't changed.",
+    "STEP 8 - Fix the repeated localStorage.setItem patterns in the auto-save useEffect (around line 800-830). There are two separate useEffects that both write to localStorage on changes - consolidate into a single debounced save. The current code has a 500ms debounce which is good, but the setProjects updater is called redundantly (once for data, once for password). Ensure only one debounced write happens.",
+    "STEP 9 - Optimize selection box rendering during multi-select drag: The selectionBox state update in handlePointerMove triggers full re-renders. Use a ref + rAF pattern similar to the node drag optimization.",
+    "STEP 10 - Add will-change: transform CSS hint to the canvas transform layer div to promote it to its own compositor layer, improving pan/zoom performance. Add this to the style of the div at around line 4115 that has the transform applied."
+  ],
+  "acceptance_criteria": [
+    "npm run build completes successfully with no errors",
+    "No behavioral changes - all existing interactions (drag, pan, zoom, select, connect, edit) work identically",
+    "Bundle size does not increase by more than 2KB (memoization adds negligible code)",
+    "The MiniMap component is wrapped with React.memo",
+    "The TaskPanel component is wrapped with React.memo",
+    "The node card rendering uses React.memo",
+    "The connector/edge SVG layer uses React.memo",
+    "handlePointerMove uses rAF throttling for drag state updates",
+    "computeLayout has early-return optimization",
+    "Canvas transform layer has will-change: transform CSS"
+  ],
+  "verification": [
+    "Run npm run build and confirm no errors",
+    "Verify the dist output is produced successfully"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

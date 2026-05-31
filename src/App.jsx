@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { 
   Plus, Trash2, X, ChevronDown, 
   FileText, Network, FolderOpen, Palette, Check, ZoomIn, ZoomOut, Focus,
@@ -223,6 +223,13 @@ const getDescendants = (groupId, currentGroups, currentNodes) => {
 const computeLayout = (currentGroups, currentNodes) => {
   if (!currentGroups || currentGroups.length === 0) return currentGroups;
 
+  // Early return if no groups have child nodes or subgroups
+  const hasAnyChildren = currentGroups.some(g =>
+    currentNodes.some(n => n.groupId === g.id) ||
+    currentGroups.some(sg => sg.parentGroupId === g.id)
+  );
+  if (!hasAnyChildren) return currentGroups;
+
   const getDepth = (g) => {
     let depth = 0;
     let curr = g;
@@ -316,6 +323,258 @@ const computeLayout = (currentGroups, currentNodes) => {
 };
 
 
+// --- Memoized Connector Layer Component ---
+const ConnectorLayer = React.memo(function ConnectorLayer({
+  edges,
+  nodes,
+  groups,
+  images,
+  connecting,
+  draggingImage,
+  getConnectionPoint,
+  drawCurve,
+  removeEdge,
+  getLiveCoordinates,
+}) {
+  return (
+    <svg className="absolute overflow-visible w-full h-full z-30">
+      <defs>
+        {Object.entries(THEMES).map(([key, theme]) => (
+          <marker key={key} id={`arrow-${key}`} markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+            <polygon points="0 0, 6 3, 0 6" fill={theme.line} />
+          </marker>
+        ))}
+      </defs>
+      
+      {edges.map(edge => {
+        const startPos = getConnectionPoint(edge.source, true);
+        const endPos = getConnectionPoint(edge.target, false);
+        
+        if (!startPos || !endPos) return null;
+
+        const sourceNode = nodes.find(n => n.id === edge.source);
+        const sourceImage = !sourceNode ? (images || []).find(i => i.id === edge.source) : null;
+        const sourceGroup = (!sourceNode && !sourceImage) ? groups.find(g => g.id === edge.source) : null;
+        const sourceThemeKey = sourceNode?.theme || sourceGroup?.theme || 'blue';
+        const sourceTheme = THEMES[sourceThemeKey] || THEMES.blue;
+
+        return (
+          <g key={edge.id} className="cursor-pointer group animate-in fade-in" onClick={(e) => { e.stopPropagation(); if (e.ctrlKey || e.metaKey) { removeEdge(edge.id); } }} style={{ pointerEvents: 'auto' }} title="Ctrl+Click to disconnect">
+            <path d={drawCurve(startPos.x, startPos.y, endPos.x, endPos.y)} stroke="transparent" strokeWidth={24} fill="none" />
+            <path d={drawCurve(startPos.x, startPos.y, endPos.x, endPos.y)} stroke={sourceTheme.line} strokeWidth={3} fill="none" markerEnd={`url(#arrow-${sourceThemeKey})`} className="transition-all duration-300 group-hover:stroke-red-500 group-hover:stroke-[4px]" />
+          </g>
+        );
+      })}
+      
+      {connecting && (() => {
+        const sourceEntity = nodes.find(n => n.id === connecting.sourceId) || (images || []).find(i => i.id === connecting.sourceId) || groups.find(g => g.id === connecting.sourceId);
+        const strokeColor = THEMES[sourceEntity?.theme || 'blue'].line;
+        return (
+          <path d={drawCurve(connecting.startX, connecting.startY, connecting.currentX, connecting.currentY)} stroke={strokeColor} strokeWidth={3} strokeDasharray="8,6" fill="none" className="animate-[dash_1s_linear_infinite]" />
+        );
+      })()}
+    </svg>
+  );
+});
+
+// --- Memoized Node Card Component ---
+const NodeCard = React.memo(function NodeCard({
+  node,
+  index,
+  theme,
+  isDragging,
+  isFocused,
+  isSelected,
+  isConnectHovered,
+  connecting,
+  displayX,
+  displayY,
+  nodeDims,
+  selectedNodeIds,
+  edges,
+  workspaces,
+  tasks,
+  editingTextNode,
+  openColorPicker,
+  openLinkPicker,
+  onPointerEnter,
+  onPointerLeave,
+  onContextMenu,
+  onPointerDown,
+  onPointerUp,
+  onTitleChange,
+  onTitleFocus,
+  onContentChange,
+  onContentClick,
+  onContentBlur,
+  onLinkPortalClick,
+  onLinkPickerToggle,
+  onLinkSelect,
+  onColorPickerToggle,
+  onColorSelect,
+  onDelete,
+  onConnectPortPointerDown,
+  onConnectPortPointerUp,
+  onLocateCard,
+  renderLinks,
+  getWorkspaceCoords,
+}) {
+  const HEADER_CENTER_Y = 24;
+  
+  return (
+    <div
+      key={node.id}
+      className={`absolute rounded-lg border shadow-sm pointer-events-auto group flex flex-col ${
+        isDragging ? 'shadow-lg scale-[1.02] z-[9999]' : 'transition-all duration-150'
+      } ${
+        isFocused ? 'ring-4 ring-indigo-500 animate-[pulse_1.5s_infinite]' : ''
+      } ${isSelected ? 'ring-2 ring-offset-1' : 'border-slate-200 hover:border-slate-300'} ${
+        isConnectHovered ? 'ring-2 ring-green-400 shadow-lg shadow-green-200/50' : ''
+      }`}
+      style={{ 
+        left: displayX, 
+        top: displayY, 
+        width: nodeDims.width,
+        backgroundColor: theme.cardBg || '#bfdbfe',
+        padding: 12,
+        ...(isSelected ? { borderColor: theme.border || '#3b82f6' } : {}),
+        zIndex: isDragging ? 9999 : (isFocused ? 999 : 50 + index) 
+      }}
+      onPointerEnter={onPointerEnter}
+      onPointerLeave={onPointerLeave}
+      onContextMenu={onContextMenu}
+      onPointerDown={onPointerDown}
+      onPointerUp={onPointerUp}
+    >
+      {/* Title */}
+      <input 
+        className="bg-transparent font-bold focus:outline-none focus:bg-slate-50 rounded px-1 w-full text-sm text-slate-800 placeholder-slate-400 cursor-grab active:cursor-grabbing" 
+        value={node.title || ''} 
+        placeholder="Enter Title..." 
+        onFocus={onTitleFocus} 
+        onChange={onTitleChange} 
+        onPointerDown={(e) => e.stopPropagation()}
+      />
+
+      {/* Content */}
+      <div className="mt-2 flex-1 min-h-[3rem]" onPointerDown={(e) => e.stopPropagation()}>
+        {editingTextNode === node.id ? (
+          <textarea 
+            autoFocus
+            onBlur={onContentBlur}
+            className="w-full h-full min-h-[3rem] bg-transparent resize-none focus:outline-none text-slate-600 text-xs leading-relaxed placeholder-slate-400 custom-scrollbar" 
+            value={node.content || ''} 
+            onChange={onContentChange} 
+            placeholder="Write notes or details..." 
+          />
+        ) : (
+          <div 
+            onClick={onContentClick}
+            className="w-full h-full min-h-[3rem] bg-transparent overflow-y-auto text-slate-600 text-xs leading-relaxed custom-scrollbar cursor-text whitespace-pre-wrap"
+            title="Click to edit content"
+          >
+            {node.content ? renderLinks(node.content) : <span className="text-slate-400 italic">Write notes or details...</span>}
+          </div>
+        )}
+      </div>
+
+      {/* Link Portal */}
+      {node.linkToTab && (
+        <button 
+          onClick={onLinkPortalClick}
+          onPointerDown={(e) => e.stopPropagation()}
+          className="flex items-center justify-between px-2 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold rounded-md border border-indigo-200/80 transition-all w-full mt-2"
+        >
+          <span className="flex items-center gap-1"><ExternalLink className="w-3 h-3 text-indigo-600" /> Portal</span>
+          <span className="text-indigo-900 font-extrabold max-w-[100px] truncate text-[10px]">{workspaces.find(w => w.id === node.linkToTab)?.name || 'Linked Map'}</span>
+        </button>
+      )}
+
+      {/* Clone indicator */}
+      {node.cloneSourceId && (
+        <div className="absolute bottom-2 right-2">
+          <Copy className="w-3 h-3 text-violet-400" />
+        </div>
+      )}
+
+      {/* Task status indicator */}
+      {(node.linkedTaskIds && node.linkedTaskIds.length > 0) && (() => {
+        const linkedTask = tasks.find(t => node.linkedTaskIds.includes(t.id));
+        if (!linkedTask) return null;
+        const statusColors = { not_started: 'bg-gray-400', in_progress: 'bg-blue-500', completed: 'bg-green-500', blocked: 'bg-amber-500' };
+        const dotColor = statusColors[linkedTask.status] || 'bg-gray-400';
+        return <div className={`absolute top-2 right-2 w-2.5 h-2.5 rounded-full ${dotColor}`} title={`Task: ${linkedTask.status.replace('_', ' ')}`} />;
+      })()}
+
+      {/* Hover toolbar */}
+      <div className="absolute -top-8 right-1 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity bg-white rounded-md shadow border border-slate-200 px-1 py-0.5" onPointerDown={(e) => e.stopPropagation()}>
+        <button 
+          onClick={onLinkPickerToggle}
+          className={`p-1 hover:bg-slate-100 rounded text-slate-500 ${node.linkToTab ? 'text-indigo-600' : ''}`}
+          title="Link Portal"
+        >
+          <Link2 className="w-3 h-3" />
+        </button>
+        {openLinkPicker === node.id && (
+          <div className="absolute top-8 right-0 bg-white p-2 rounded-xl shadow-xl border border-slate-100 flex flex-col gap-1 z-50 pointer-events-auto min-w-[150px]" onClick={(e) => e.stopPropagation()}>
+            <span className="text-[9px] font-bold text-slate-400 px-2 py-1 uppercase tracking-wider">Tab Portal Link:</span>
+            <button onClick={() => onLinkSelect(null)} className="w-full text-left px-2 py-1 text-xs font-semibold rounded hover:bg-slate-100 text-red-500">Disconnect Portal</button>
+            {workspaces.map(ws => (
+              <button key={ws.id} onClick={() => onLinkSelect(ws.id)} className="w-full text-left px-2 py-1 text-xs font-semibold rounded hover:bg-slate-100 flex items-center justify-between text-slate-700">
+                <span>{ws.name}</span>
+                {node.linkToTab === ws.id && <Check className="w-3 h-3 text-indigo-600" />}
+              </button>
+            ))}
+          </div>
+        )}
+        <button onClick={onColorPickerToggle} className="p-1 hover:bg-slate-100 rounded text-slate-500" title="Theme"><Palette className="w-3 h-3"/></button>
+        {openColorPicker === node.id && (
+          <div className="absolute top-8 right-0 bg-white p-2 rounded-xl shadow-xl border border-slate-100 flex gap-1.5 z-50 pointer-events-auto" onClick={(e) => e.stopPropagation()}>
+            {Object.keys(THEMES).map(colorKey => (
+              <button key={colorKey} onClick={() => onColorSelect(colorKey)} className={`w-6 h-6 rounded-full flex items-center justify-center border-2 transition-transform hover:scale-110 ${THEMES[colorKey].port}`}>
+                {node.theme === colorKey && <Check className="w-3 h-3 text-white" />}
+              </button>
+            ))}
+          </div>
+        )}
+        <button onClick={onDelete} className="p-1 hover:bg-red-100 hover:text-red-600 rounded text-slate-400" title="Delete"><X className="w-3 h-3"/></button>
+      </div>
+
+      {/* Connection Ports - visible on hover */}
+      <div 
+        className={`absolute left-0 top-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 rounded-full cursor-crosshair z-30 flex items-center justify-center ${connecting ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'} transition-all`}
+        onPointerDown={(e) => e.stopPropagation()} 
+        onPointerUp={onConnectPortPointerUp}
+      >
+        <div className={`w-3 h-3 rounded-full border-2 border-white shadow ${theme.port}`} />
+      </div>
+      <div 
+        className={`absolute right-0 top-1/2 translate-x-1/2 -translate-y-1/2 w-8 h-8 rounded-full cursor-crosshair z-30 flex items-center justify-center ${connecting ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'} transition-all`}
+        onPointerDown={onConnectPortPointerDown}
+        onGotPointerCapture={(e) => { e.currentTarget.releasePointerCapture(e.pointerId); }}
+      >
+        <div className={`w-3 h-3 rounded-full border-2 border-white shadow ${theme.port}`} />
+      </div>
+    </div>
+  );
+}, (prevProps, nextProps) => {
+  // Custom comparison for performance
+  if (prevProps.node !== nextProps.node) return false;
+  if (prevProps.isDragging !== nextProps.isDragging) return false;
+  if (prevProps.isFocused !== nextProps.isFocused) return false;
+  if (prevProps.isSelected !== nextProps.isSelected) return false;
+  if (prevProps.isConnectHovered !== nextProps.isConnectHovered) return false;
+  if (prevProps.connecting !== nextProps.connecting) return false;
+  if (prevProps.displayX !== nextProps.displayX) return false;
+  if (prevProps.displayY !== nextProps.displayY) return false;
+  if (prevProps.editingTextNode !== nextProps.editingTextNode) return false;
+  if (prevProps.openColorPicker !== nextProps.openColorPicker) return false;
+  if (prevProps.openLinkPicker !== nextProps.openLinkPicker) return false;
+  if (prevProps.index !== nextProps.index) return false;
+  return true;
+});
+
+
 export default function WorkflowApp() {
   // --- Core State ---
   const [workspaces, setWorkspaces] = useState([]);
@@ -368,6 +627,8 @@ export default function WorkflowApp() {
   const stateRef = useRef({ workspaces: defaultWorkspaces, activeTab: 'ws-1', nextId: 10 });
   const dragSnapshot = useRef(null);
   const draggingNodeRef = useRef(null);
+  const rafRef = useRef(null);
+  const selectionRafRef = useRef(null);
 
   // --- Pan & Zoom States ---
   const [transform, setTransform] = useState({ x: 0, y: 0, scale: 1 });
@@ -796,7 +1057,7 @@ export default function WorkflowApp() {
           const now = Date.now();
           const lastMod = p.lastModified || 0;
           const shouldUpdateTime = (now - lastMod) > 60000;
-          return { ...p, workspaces, activeTab, nextId, tasks, taskGroups, cardTaskLinks, ...(shouldUpdateTime ? { lastModified: now } : {}) };
+          return { ...p, workspaces, activeTab, nextId, tasks, taskGroups, cardTaskLinks, password: storedPassword, ...(shouldUpdateTime ? { lastModified: now } : {}) };
         });
         return updated;
       });
@@ -808,25 +1069,7 @@ export default function WorkflowApp() {
       }, 500);
       localStorage.setItem('nexus-active-project', activeProjectId);
     }
-  }, [workspaces, activeTab, nextId, tasks, taskGroups, cardTaskLinks, initialized, activeProjectId]);
-
-  useEffect(() => {
-    if (initialized && activeProjectId) {
-      setProjects(prev => {
-        const updated = prev.map(p => p.id === activeProjectId
-          ? { ...p, password: storedPassword }
-          : p
-        );
-        return updated;
-      });
-      // Debounced localStorage write (outside state updater)
-      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-      saveTimerRef.current = setTimeout(() => {
-        const currentProjects = projectsRef.current;
-        localStorage.setItem('nexus-app-state', JSON.stringify(currentProjects));
-      }, 500);
-    }
-  }, [storedPassword, initialized, activeProjectId]);
+  }, [workspaces, activeTab, nextId, tasks, taskGroups, cardTaskLinks, storedPassword, initialized, activeProjectId]);
 
   // Cleanup debounce timer on unmount
   useEffect(() => {
@@ -929,10 +1172,10 @@ export default function WorkflowApp() {
     setNextId(next.nextId);
   }, [updateHistory]);
 
-  const activeWs = workspaces.find(w => w.id === activeTab) || workspaces[0];
-  const nodes = activeWs?.nodes || [];
-  const edges = activeWs?.edges || [];
-  const groups = activeWs?.groups || [];
+  const activeWs = useMemo(() => workspaces.find(w => w.id === activeTab) || workspaces[0], [workspaces, activeTab]);
+  const nodes = useMemo(() => activeWs?.nodes || [], [activeWs]);
+  const edges = useMemo(() => activeWs?.edges || [], [activeWs]);
+  const groups = useMemo(() => activeWs?.groups || [], [activeWs]);
 
   const updateActiveWorkspace = useCallback((updater) => {
     setWorkspaces(prev => prev.map(ws => ws.id === activeTab ? { ...ws, ...updater(ws) } : ws));
@@ -2259,18 +2502,23 @@ export default function WorkflowApp() {
   const handlePointerMove = useCallback((e) => {
     if (isMultiSelecting && selectionBox) {
       const coords = getWorkspaceCoords(e);
-      setSelectionBox(prev => prev ? { ...prev, endX: coords.x, endY: coords.y } : null);
-      const minX = Math.min(selectionBox.startX, coords.x);
-      const maxX = Math.max(selectionBox.startX, coords.x);
-      const minY = Math.min(selectionBox.startY, coords.y);
-      const maxY = Math.max(selectionBox.startY, coords.y);
-      const NODE_W = 280;
-      const NODE_H = 160;
-      const insideNodes = nodes.filter(n => {
-        const nx = n.x, ny = n.y;
-        return (nx + NODE_W > minX && nx < maxX && ny + NODE_H > minY && ny < maxY);
-      });
-      setSelectedNodeIds(insideNodes.map(n => n.id));
+      if (!selectionRafRef.current) {
+        selectionRafRef.current = requestAnimationFrame(() => {
+          selectionRafRef.current = null;
+          setSelectionBox(prev => prev ? { ...prev, endX: coords.x, endY: coords.y } : null);
+          const minX = Math.min(selectionBox.startX, coords.x);
+          const maxX = Math.max(selectionBox.startX, coords.x);
+          const minY = Math.min(selectionBox.startY, coords.y);
+          const maxY = Math.max(selectionBox.startY, coords.y);
+          const NODE_W = 280;
+          const NODE_H = 160;
+          const insideNodes = nodes.filter(n => {
+            const nx = n.x, ny = n.y;
+            return (nx + NODE_W > minX && nx < maxX && ny + NODE_H > minY && ny < maxY);
+          });
+          setSelectedNodeIds(insideNodes.map(n => n.id));
+        });
+      }
       return;
     }
     if (isPanning) {
@@ -2292,11 +2540,12 @@ export default function WorkflowApp() {
         currentY: newY
       };
 
-      setDraggingNode(prev => ({
-        ...prev,
-        currentX: newX,
-        currentY: newY
-      }));
+      if (!rafRef.current) {
+        rafRef.current = requestAnimationFrame(() => {
+          rafRef.current = null;
+          setDraggingNode(prev => prev ? { ...prev, currentX: draggingNodeRef.current.currentX, currentY: draggingNodeRef.current.currentY } : null);
+        });
+      }
 
       const activeGroupHoverId = getSpatiallyHoveredGroup(newX, newY, getNodeDimensions(nodes.find(n => n.id === draggingNode.id) || {}).width);
       setDragHoveredGroupId(activeGroupHoverId);
@@ -3334,12 +3583,7 @@ export default function WorkflowApp() {
     };
   };
 
-  const getTaskStats = () => {
-    const total = nodes.length;
-    return { total };
-  };
-
-  const stats = getTaskStats();
+  const stats = useMemo(() => ({ total: nodes.length }), [nodes]);
 
   if (!initialized || !activeWs) return null;
 
@@ -4026,7 +4270,7 @@ export default function WorkflowApp() {
           {/* Canvas View Transform Layer */}
           <div 
             className="absolute top-0 left-0 w-full h-full pointer-events-none"
-            style={{ transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`, transformOrigin: '0 0' }}
+            style={{ transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`, transformOrigin: '0 0', willChange: 'transform' }}
           >
             
             {/* --- Render Phase Groups and Nested Subgroups --- */}
@@ -4159,43 +4403,18 @@ export default function WorkflowApp() {
             })}
 
             {/* --- Connecting Dynamic Paths --- */}
-            <svg className="absolute overflow-visible w-full h-full z-30">
-              <defs>
-                {Object.entries(THEMES).map(([key, theme]) => (
-                  <marker key={key} id={`arrow-${key}`} markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
-                    <polygon points="0 0, 6 3, 0 6" fill={theme.line} />
-                  </marker>
-                ))}
-              </defs>
-              
-              {edges.map(edge => {
-                const startPos = getConnectionPoint(edge.source, true);
-                const endPos = getConnectionPoint(edge.target, false);
-                
-                if (!startPos || !endPos) return null;
-
-                const sourceNode = nodes.find(n => n.id === edge.source);
-                const sourceImage = !sourceNode ? (activeWs?.images || []).find(i => i.id === edge.source) : null;
-                const sourceGroup = (!sourceNode && !sourceImage) ? groups.find(g => g.id === edge.source) : null;
-                const sourceThemeKey = sourceNode?.theme || sourceGroup?.theme || 'blue';
-                const sourceTheme = THEMES[sourceThemeKey] || THEMES.blue;
-
-                return (
-                  <g key={edge.id} className="cursor-pointer group animate-in fade-in" onClick={(e) => { e.stopPropagation(); if (e.ctrlKey || e.metaKey) { removeEdge(edge.id); } }} style={{ pointerEvents: 'auto' }} title="Ctrl+Click to disconnect">
-                    <path d={drawCurve(startPos.x, startPos.y, endPos.x, endPos.y)} stroke="transparent" strokeWidth={24} fill="none" />
-                    <path d={drawCurve(startPos.x, startPos.y, endPos.x, endPos.y)} stroke={sourceTheme.line} strokeWidth={3} fill="none" markerEnd={`url(#arrow-${sourceThemeKey})`} className="transition-all duration-300 group-hover:stroke-red-500 group-hover:stroke-[4px]" />
-                  </g>
-                );
-              })}
-              
-              {connecting && (() => {
-                const sourceEntity = nodes.find(n => n.id === connecting.sourceId) || (activeWs?.images || []).find(i => i.id === connecting.sourceId) || groups.find(g => g.id === connecting.sourceId);
-                const strokeColor = THEMES[sourceEntity?.theme || 'blue'].line;
-                return (
-                  <path d={drawCurve(connecting.startX, connecting.startY, connecting.currentX, connecting.currentY)} stroke={strokeColor} strokeWidth={3} strokeDasharray="8,6" fill="none" className="animate-[dash_1s_linear_infinite]" />
-                );
-              })()}
-            </svg>
+            <ConnectorLayer
+              edges={edges}
+              nodes={nodes}
+              groups={groups}
+              images={activeWs?.images || []}
+              connecting={connecting}
+              draggingImage={draggingImage}
+              getConnectionPoint={getConnectionPoint}
+              drawCurve={drawCurve}
+              removeEdge={removeEdge}
+              getLiveCoordinates={getLiveCoordinates}
+            />
 
 
             {/* --- Canvas Image Objects --- */}
@@ -4284,30 +4503,31 @@ export default function WorkflowApp() {
               const isFocused = focusedNodeId === node.id;
 
               return (
-                <div
+                <NodeCard
                   key={node.id}
-                  className={`absolute rounded-lg border shadow-sm pointer-events-auto group flex flex-col ${
-                    isDragging ? 'shadow-lg scale-[1.02] z-[9999]' : 'transition-all duration-150'
-                  } ${
-                    isFocused ? 'ring-4 ring-indigo-500 animate-[pulse_1.5s_infinite]' : ''
-                  } ${selectedNodeIds.includes(node.id) ? 'ring-2 ring-offset-1' : 'border-slate-200 hover:border-slate-300'} ${
-                    connectHoverNodeId === node.id ? 'ring-2 ring-green-400 shadow-lg shadow-green-200/50' : ''
-                  }`}
-                  style={{ 
-                    left: displayX, 
-                    top: displayY, 
-                    width: nodeDims.width,
-                    backgroundColor: theme.cardBg || '#bfdbfe',
-                    padding: 12,
-                    ...(selectedNodeIds.includes(node.id) ? { borderColor: theme.border || '#3b82f6' } : {}),
-                    zIndex: isDragging ? 9999 : (isFocused ? 999 : 50 + index) 
-                  }}
+                  node={node}
+                  index={index}
+                  theme={theme}
+                  isDragging={isDragging}
+                  isFocused={isFocused}
+                  isSelected={selectedNodeIds.includes(node.id)}
+                  isConnectHovered={connectHoverNodeId === node.id}
+                  connecting={connecting}
+                  displayX={displayX}
+                  displayY={displayY}
+                  nodeDims={nodeDims}
+                  selectedNodeIds={selectedNodeIds}
+                  edges={edges}
+                  workspaces={workspaces}
+                  tasks={tasks}
+                  editingTextNode={editingTextNode}
+                  openColorPicker={openColorPicker}
+                  openLinkPicker={openLinkPicker}
                   onPointerEnter={() => { if (connecting && connecting.sourceId !== node.id) setConnectHoverNodeId(node.id); }}
                   onPointerLeave={() => { if (connectHoverNodeId === node.id) setConnectHoverNodeId(null); }}
                   onContextMenu={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    
                     const rect = workspaceRef.current.getBoundingClientRect();
                     setNodeContextMenu({
                       x: e.clientX - rect.left,
@@ -4349,7 +4569,6 @@ export default function WorkflowApp() {
                     };
                   }}
                   onPointerUp={(e) => {
-                    // Handle connection drop on entire card
                     if (connecting && connecting.sourceId !== node.id) {
                       e.stopPropagation();
                       const exists = edges.some(edge => edge.source === connecting.sourceId && edge.target === node.id);
@@ -4370,117 +4589,22 @@ export default function WorkflowApp() {
                     }
                     nodeTapRef.current = null;
                   }}
-                >
-                  {/* Title */}
-                  <input 
-                    className="bg-transparent font-bold focus:outline-none focus:bg-slate-50 rounded px-1 w-full text-sm text-slate-800 placeholder-slate-400 cursor-grab active:cursor-grabbing" 
-                    value={node.title || ''} 
-                    placeholder="Enter Title..." 
-                    onFocus={() => takeSnapshot()} 
-                    onChange={(e) => updateNode(node.id, { title: e.target.value })} 
-                    onPointerDown={(e) => e.stopPropagation()}
-                  />
-
-                  {/* Content */}
-                  <div className="mt-2 flex-1 min-h-[3rem]" onPointerDown={(e) => e.stopPropagation()}>
-                    {editingTextNode === node.id ? (
-                      <textarea 
-                        autoFocus
-                        onBlur={() => setEditingTextNode(null)}
-                        className="w-full h-full min-h-[3rem] bg-transparent resize-none focus:outline-none text-slate-600 text-xs leading-relaxed placeholder-slate-400 custom-scrollbar" 
-                        value={node.content || ''} 
-                        onChange={(e) => updateNode(node.id, { content: e.target.value })} 
-                        placeholder="Write notes or details..." 
-                      />
-                    ) : (
-                      <div 
-                        onClick={() => { takeSnapshot(); setEditingTextNode(node.id); }}
-                        className="w-full h-full min-h-[3rem] bg-transparent overflow-y-auto text-slate-600 text-xs leading-relaxed custom-scrollbar cursor-text whitespace-pre-wrap"
-                        title="Click to edit content"
-                      >
-                        {node.content ? renderLinks(node.content) : <span className="text-slate-400 italic">Write notes or details...</span>}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Link Portal */}
-                  {node.linkToTab && (
-                    <button 
-                      onClick={() => { const target = workspaces.find(w => w.id === node.linkToTab); if (target) setActiveTab(target.id); }}
-                      onPointerDown={(e) => e.stopPropagation()}
-                      className="flex items-center justify-between px-2 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold rounded-md border border-indigo-200/80 transition-all w-full mt-2"
-                    >
-                      <span className="flex items-center gap-1"><ExternalLink className="w-3 h-3 text-indigo-600" /> Portal</span>
-                      <span className="text-indigo-900 font-extrabold max-w-[100px] truncate text-[10px]">{workspaces.find(w => w.id === node.linkToTab)?.name || 'Linked Map'}</span>
-                    </button>
-                  )}
-
-                  {/* Clone indicator */}
-                  {node.cloneSourceId && (
-                    <div className="absolute bottom-2 right-2">
-                      <Copy className="w-3 h-3 text-violet-400" />
-                    </div>
-                  )}
-
-                  {/* Task status indicator */}
-                  {(node.linkedTaskIds && node.linkedTaskIds.length > 0) && (() => {
-                    const linkedTask = tasks.find(t => node.linkedTaskIds.includes(t.id));
-                    if (!linkedTask) return null;
-                    const statusColors = { not_started: 'bg-gray-400', in_progress: 'bg-blue-500', completed: 'bg-green-500', blocked: 'bg-amber-500' };
-                    const dotColor = statusColors[linkedTask.status] || 'bg-gray-400';
-                    return <div className={`absolute top-2 right-2 w-2.5 h-2.5 rounded-full ${dotColor}`} title={`Task: ${linkedTask.status.replace('_', ' ')}`} />;
-                  })()}
-
-                  {/* Hover toolbar */}
-                  <div className="absolute -top-8 right-1 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity bg-white rounded-md shadow border border-slate-200 px-1 py-0.5" onPointerDown={(e) => e.stopPropagation()}>
-                    <button 
-                      onClick={(e) => { e.stopPropagation(); setOpenLinkPicker(openLinkPicker === node.id ? null : node.id); setOpenColorPicker(null); }}
-                      className={`p-1 hover:bg-slate-100 rounded text-slate-500 ${node.linkToTab ? 'text-indigo-600' : ''}`}
-                      title="Link Portal"
-                    >
-                      <Link2 className="w-3 h-3" />
-                    </button>
-                    {openLinkPicker === node.id && (
-                      <div className="absolute top-8 right-0 bg-white p-2 rounded-xl shadow-xl border border-slate-100 flex flex-col gap-1 z-50 pointer-events-auto min-w-[150px]" onClick={(e) => e.stopPropagation()}>
-                        <span className="text-[9px] font-bold text-slate-400 px-2 py-1 uppercase tracking-wider">Tab Portal Link:</span>
-                        <button onClick={() => { takeSnapshot(); updateNode(node.id, { linkToTab: null }); setOpenLinkPicker(null); }} className="w-full text-left px-2 py-1 text-xs font-semibold rounded hover:bg-slate-100 text-red-500">Disconnect Portal</button>
-                        {workspaces.map(ws => (
-                          <button key={ws.id} onClick={() => { takeSnapshot(); updateNode(node.id, { linkToTab: ws.id }); setOpenLinkPicker(null); }} className="w-full text-left px-2 py-1 text-xs font-semibold rounded hover:bg-slate-100 flex items-center justify-between text-slate-700">
-                            <span>{ws.name}</span>
-                            {node.linkToTab === ws.id && <Check className="w-3 h-3 text-indigo-600" />}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                    <button onClick={(e) => { e.stopPropagation(); setOpenColorPicker(openColorPicker === node.id ? null : node.id); setOpenLinkPicker(null); }} className="p-1 hover:bg-slate-100 rounded text-slate-500" title="Theme"><Palette className="w-3 h-3"/></button>
-                    {openColorPicker === node.id && (
-                      <div className="absolute top-8 right-0 bg-white p-2 rounded-xl shadow-xl border border-slate-100 flex gap-1.5 z-50 pointer-events-auto" onClick={(e) => e.stopPropagation()}>
-                        {Object.keys(THEMES).map(colorKey => (
-                          <button key={colorKey} onClick={() => { takeSnapshot(); updateNode(node.id, { theme: colorKey }); setOpenColorPicker(null); }} className={`w-6 h-6 rounded-full flex items-center justify-center border-2 transition-transform hover:scale-110 ${THEMES[colorKey].port}`}>
-                            {node.theme === colorKey && <Check className="w-3 h-3 text-white" />}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                    <button onClick={() => deleteNode(node.id)} className="p-1 hover:bg-red-100 hover:text-red-600 rounded text-slate-400" title="Delete"><X className="w-3 h-3"/></button>
-                  </div>
-
-                  {/* Connection Ports - visible on hover */}
-                  <div 
-                    className={`absolute left-0 top-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 rounded-full cursor-crosshair z-30 flex items-center justify-center ${connecting ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'} transition-all`}
-                    onPointerDown={(e) => e.stopPropagation()} 
-                    onPointerUp={(e) => { e.stopPropagation(); if (connecting && connecting.sourceId !== node.id) { const exists = edges.some(edge => edge.source === connecting.sourceId && edge.target === node.id); if (!exists) { takeSnapshot(); updateActiveWorkspace(ws => ({ edges: [...ws.edges, { id: `e-${Date.now()}`, source: connecting.sourceId, target: node.id }] })); } } setConnecting(null); setConnectHoverNodeId(null); }}
-                  >
-                    <div className={`w-3 h-3 rounded-full border-2 border-white shadow ${theme.port}`} />
-                  </div>
-                  <div 
-                    className={`absolute right-0 top-1/2 translate-x-1/2 -translate-y-1/2 w-8 h-8 rounded-full cursor-crosshair z-30 flex items-center justify-center ${connecting ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'} transition-all`}
-                    onPointerDown={(e) => { e.stopPropagation(); bringToFront(node.id); const coords = getWorkspaceCoords(e); setConnecting({ sourceId: node.id, startX: node.x + nodeDims.width, startY: node.y + HEADER_CENTER_Y, currentX: coords.x, currentY: coords.y }); }}
-                    onGotPointerCapture={(e) => { e.currentTarget.releasePointerCapture(e.pointerId); }}
-                  >
-                    <div className={`w-3 h-3 rounded-full border-2 border-white shadow ${theme.port}`} />
-                  </div>
-                </div>
+                  onTitleFocus={() => takeSnapshot()}
+                  onTitleChange={(e) => updateNode(node.id, { title: e.target.value })}
+                  onContentChange={(e) => updateNode(node.id, { content: e.target.value })}
+                  onContentClick={() => { takeSnapshot(); setEditingTextNode(node.id); }}
+                  onContentBlur={() => setEditingTextNode(null)}
+                  onLinkPortalClick={() => { const target = workspaces.find(w => w.id === node.linkToTab); if (target) setActiveTab(target.id); }}
+                  onLinkPickerToggle={(e) => { e.stopPropagation(); setOpenLinkPicker(openLinkPicker === node.id ? null : node.id); setOpenColorPicker(null); }}
+                  onLinkSelect={(wsId) => { takeSnapshot(); updateNode(node.id, { linkToTab: wsId }); setOpenLinkPicker(null); }}
+                  onColorPickerToggle={(e) => { e.stopPropagation(); setOpenColorPicker(openColorPicker === node.id ? null : node.id); setOpenLinkPicker(null); }}
+                  onColorSelect={(colorKey) => { takeSnapshot(); updateNode(node.id, { theme: colorKey }); setOpenColorPicker(null); }}
+                  onDelete={() => deleteNode(node.id)}
+                  onConnectPortPointerDown={(e) => { e.stopPropagation(); bringToFront(node.id); const coords = getWorkspaceCoords(e); setConnecting({ sourceId: node.id, startX: node.x + nodeDims.width, startY: node.y + HEADER_CENTER_Y, currentX: coords.x, currentY: coords.y }); }}
+                  onConnectPortPointerUp={(e) => { e.stopPropagation(); if (connecting && connecting.sourceId !== node.id) { const exists = edges.some(edge => edge.source === connecting.sourceId && edge.target === node.id); if (!exists) { takeSnapshot(); updateActiveWorkspace(ws => ({ edges: [...ws.edges, { id: `e-${Date.now()}`, source: connecting.sourceId, target: node.id }] })); } } setConnecting(null); setConnectHoverNodeId(null); }}
+                  renderLinks={renderLinks}
+                  getWorkspaceCoords={getWorkspaceCoords}
+                />
               );
             })}
 
@@ -4504,7 +4628,9 @@ export default function WorkflowApp() {
             nodes={nodes}
             groups={groups}
             images={activeWs?.images || []}
-            transform={transform}
+            transformX={transform.x}
+            transformY={transform.y}
+            transformScale={transform.scale}
             setTransform={setTransform}
             workspaceRef={workspaceRef}
             visible={showMiniMap}

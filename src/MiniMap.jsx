@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 
 // Theme color map for node/group rendering in mini map
 const THEME_COLORS = {
@@ -27,11 +27,13 @@ const ARROW_STEP = 50;
 const NODE_EXPANDED_WIDTH = 240;
 const NODE_EXPANDED_HEIGHT = 120;
 
-export default function MiniMap({
+const MiniMap = React.memo(function MiniMap({
   nodes,
   groups,
   images,
-  transform,
+  transformX,
+  transformY,
+  transformScale,
   setTransform,
   workspaceRef,
   visible,
@@ -47,6 +49,8 @@ export default function MiniMap({
   const dragStartRef = useRef(null);
   const resizeStartRef = useRef(null);
   const containerRef = useRef(null);
+
+  const transform = useMemo(() => ({ x: transformX, y: transformY, scale: transformScale }), [transformX, transformY, transformScale]);
   const transformRef = useRef(transform);
 
   // Keep transformRef in sync with the latest transform prop
@@ -417,4 +421,6 @@ export default function MiniMap({
       </div>
     </div>
   );
-}
+});
+
+export default MiniMap;
