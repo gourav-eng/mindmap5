@@ -2,7 +2,7 @@
   "id": "FEAT-001",
   "type": "fix",
   "description": "Fix task-card link persistence after page refresh and fix tasks not restoring from full backup import. Two bugs share the same root cause: task data not being properly used as source of truth.",
-  "status": "in_progress",
+  "status": "completed",
   "steps": [
     "Step 1: In src/App.jsx, fix the task status indicator on canvas cards (around line 4488-4495). Currently it reads from node.linkedTaskIds which can be stale. Change it to derive the linked task from cardTaskLinks state instead: find link where l.cardId === node.id, then find the task. This makes cardTaskLinks the single source of truth.",
     "Step 2: In src/App.jsx, fix the importAllData function (around line 1985-2004). After setting workspaces/activeTab/nextId from the restored default project, also call setTasks(defaultProj.tasks || []), setTaskGroups(defaultProj.taskGroups || [...default groups...]), and setCardTaskLinks(defaultProj.cardTaskLinks || []) to hydrate task state on import.",
@@ -21,5 +21,5 @@
     "cd /projects/sandbox/mindmap5 && npm run build"
   ],
   "blocked_reason": null,
-  "findings": ""
+  "findings": "All 5 changes applied cleanly. Build passes. The linkedTaskIds property may still exist on old saved node data but is now safely ignored - the app derives task links exclusively from cardTaskLinks state."
 }
