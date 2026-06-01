@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   X, CheckSquare, ChevronUp, ChevronDown,
   Maximize2, Minimize2, Circle, MessageSquare,
@@ -39,6 +39,7 @@ export default function TaskPanel({
   const [newGroupName, setNewGroupName] = useState('');
   const [showAddGroup, setShowAddGroup] = useState(false);
   const [colorPickerGroupId, setColorPickerGroupId] = useState(null);
+  const cancelledRef = useRef(false);
 
   if (!showTaskPanel) return null;
 
@@ -77,6 +78,7 @@ export default function TaskPanel({
   };
 
   const startEditTitle = (task) => {
+    cancelledRef.current = false;
     setEditingTitleId(task.id);
     setEditingTitleValue(task.title);
   };
@@ -137,8 +139,8 @@ export default function TaskPanel({
               type="text"
               value={editingTitleValue}
               onChange={(e) => setEditingTitleValue(e.target.value)}
-              onBlur={() => commitEditTitle(task.id)}
-              onKeyDown={(e) => { if (e.key === 'Enter') commitEditTitle(task.id); if (e.key === 'Escape') setEditingTitleId(null); }}
+              onBlur={() => { if (!cancelledRef.current) commitEditTitle(task.id); }}
+              onKeyDown={(e) => { if (e.key === 'Enter') commitEditTitle(task.id); if (e.key === 'Escape') { cancelledRef.current = true; setEditingTitleId(null); } }}
               onClick={(e) => e.stopPropagation()}
               className="flex-1 min-w-0 text-xs font-semibold bg-white border border-indigo-300 rounded px-1 py-0.5 text-slate-700 focus:outline-none focus:ring-1 focus:ring-indigo-300"
               autoFocus
@@ -270,11 +272,18 @@ export default function TaskPanel({
   };
 
   // --- CARD VIEW (existing layout) ---
-  const renderCardView = () => (
+  const renderCardView = () => {
+    const groupsToShow = activeGroupTab === 'all' ? sortedGroups : sortedGroups.filter(g => g.id === activeGroupTab);
+    return (
     <div className="p-3 space-y-3">
-      {sortedGroups.map((group, groupIndex) => {
-        const groupTasks = getTasksForGroup(group.id);
+      {groupsToShow.map((group, groupIndex) => {
+        let groupTasks = getTasksForGroup(group.id);
+        if (statusFilter !== 'all') {
+          groupTasks = groupTasks.filter(t => t.status === statusFilter);
+        }
+        if (groupTasks.length === 0) return null;
         const groupColor = GROUP_COLORS.find(c => c.value === group.color) || GROUP_COLORS[0];
+        const originalIndex = sortedGroups.indexOf(group);
         return (
           <div key={group.id} className={`${groupColor.bg} rounded-lg border ${groupColor.border} overflow-hidden`}>
             <div className={`flex items-center justify-between px-3 py-2 ${groupColor.header} border-b ${groupColor.border} relative`}>
@@ -282,8 +291,8 @@ export default function TaskPanel({
               <div className="flex items-center gap-0.5">
                 <span className="text-[10px] text-slate-400 mr-1">{groupTasks.length}</span>
                 <button onClick={() => setColorPickerGroupId(colorPickerGroupId === group.id ? null : group.id)} className={`p-0.5 rounded hover:bg-white/50 ${groupColor.text} transition-colors`} title="Change color"><Palette className="w-3.5 h-3.5" /></button>
-                <button onClick={() => onReorderGroups(groupIndex, groupIndex - 1)} disabled={groupIndex === 0} className="p-0.5 rounded hover:bg-slate-200 text-slate-400 hover:text-slate-600 disabled:opacity-30 disabled:cursor-not-allowed transition-colors" title="Move Up"><ChevronUp className="w-3.5 h-3.5" /></button>
-                <button onClick={() => onReorderGroups(groupIndex, groupIndex + 1)} disabled={groupIndex === sortedGroups.length - 1} className="p-0.5 rounded hover:bg-slate-200 text-slate-400 hover:text-slate-600 disabled:opacity-30 disabled:cursor-not-allowed transition-colors" title="Move Down"><ChevronDown className="w-3.5 h-3.5" /></button>
+                <button onClick={() => onReorderGroups(originalIndex, originalIndex - 1)} disabled={originalIndex === 0} className="p-0.5 rounded hover:bg-slate-200 text-slate-400 hover:text-slate-600 disabled:opacity-30 disabled:cursor-not-allowed transition-colors" title="Move Up"><ChevronUp className="w-3.5 h-3.5" /></button>
+                <button onClick={() => onReorderGroups(originalIndex, originalIndex + 1)} disabled={originalIndex === sortedGroups.length - 1} className="p-0.5 rounded hover:bg-slate-200 text-slate-400 hover:text-slate-600 disabled:opacity-30 disabled:cursor-not-allowed transition-colors" title="Move Down"><ChevronDown className="w-3.5 h-3.5" /></button>
                 <button onClick={() => onDeleteGroup(group.id)} className="p-0.5 rounded hover:bg-red-50 text-slate-400 hover:text-red-500 transition-colors" title="Delete Group"><Trash2 className="w-3.5 h-3.5" /></button>
               </div>
               {colorPickerGroupId === group.id && (
@@ -297,10 +306,7 @@ export default function TaskPanel({
               )}
             </div>
             <div className="p-2 space-y-1.5">
-              {groupTasks.length === 0 ? (
-                <p className="text-[11px] text-slate-400 italic text-center py-2">No tasks</p>
-              ) : (
-                groupTasks.map(task => {
+              {groupTasks.map(task => {
                   const linkedCard = getLinkedCard(task.id);
                   const statusOption = STATUS_OPTIONS.find(s => s.value === task.status) || STATUS_OPTIONS[0];
                   const isCompleted = task.status === 'completed';
@@ -328,14 +334,14 @@ export default function TaskPanel({
                       </div>
                     </div>
                   );
-                })
-              )}
+                })}
             </div>
           </div>
         );
       })}
     </div>
-  );
+    );
+  };
 
   return (
     <div className={`${taskPanelMode === 'fullscreen' ? 'flex-1' : 'w-1/2'} bg-white border-l border-slate-200 flex flex-col overflow-hidden shrink-0`}>
@@ -363,9 +369,13 @@ export default function TaskPanel({
         <button
           onClick={() => setActiveGroupTab('all')}
           className={`px-2.5 py-1 rounded-full text-[11px] font-semibold whitespace-nowrap transition-colors ${activeGroupTab === 'all' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
-        >All ({tasks.length})</button>
+        >All ({statusFilter !== 'all' ? tasks.filter(t => t.status === statusFilter).length : tasks.length})</button>
         {sortedGroups.map(group => {
-          const count = getTasksForGroup(group.id).length;
+          let groupTasks = tasks.filter(t => t.groupId === group.id);
+          if (statusFilter !== 'all') {
+            groupTasks = groupTasks.filter(t => t.status === statusFilter);
+          }
+          const count = groupTasks.length;
           return (
             <button
               key={group.id}

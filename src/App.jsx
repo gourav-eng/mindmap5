@@ -1935,9 +1935,15 @@ export default function WorkflowApp() {
           setWorkspaces(importedData.workspaces);
           setActiveTab(importedData.activeTab || importedData.workspaces[0]?.id || '');
           setNextId(importedData.nextId || 10);
-          if (importedData.tasks) setTasks(importedData.tasks);
-          if (importedData.taskGroups) setTaskGroups(importedData.taskGroups);
-          if (importedData.cardTaskLinks) setCardTaskLinks(importedData.cardTaskLinks);
+          if (Array.isArray(importedData.tasks) && importedData.tasks.every(t => t && t.id && t.title != null)) {
+            setTasks(importedData.tasks);
+          }
+          if (Array.isArray(importedData.taskGroups) && importedData.taskGroups.every(g => g && g.id && g.name != null)) {
+            setTaskGroups(importedData.taskGroups);
+          }
+          if (Array.isArray(importedData.cardTaskLinks) && importedData.cardTaskLinks.every(l => l && l.cardId && l.taskId)) {
+            setCardTaskLinks(importedData.cardTaskLinks);
+          }
         } else {
           setErrorMessage("Invalid workflow file format.");
         }
