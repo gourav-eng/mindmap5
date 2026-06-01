@@ -1730,7 +1730,7 @@ export default function WorkflowApp() {
   // Export all projects as a full backup
   const exportAllData = () => {
     const backupData = {
-      type: 'nexus-full-backup',
+      type: 'thoughtflow-backup',
       version: 1,
       exportDate: new Date().toISOString(),
       defaultProjectId,
@@ -1740,7 +1740,7 @@ export default function WorkflowApp() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `nexus-full-backup-${new Date().toISOString().slice(0,10)}.json`;
+    a.download = `thoughtflow-backup-${new Date().toISOString().slice(0,10)}.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -1857,7 +1857,7 @@ export default function WorkflowApp() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `nexus-workflow-${new Date().toISOString().slice(0,10)}.json`;
+    a.download = `thoughtflow-${new Date().toISOString().slice(0,10)}.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -1915,7 +1915,7 @@ export default function WorkflowApp() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `nexus-partial-${wsName}-${new Date().toISOString().slice(0,10)}.json`;
+    a.download = `thoughtflow-partial-${wsName}-${new Date().toISOString().slice(0,10)}.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -1958,7 +1958,7 @@ export default function WorkflowApp() {
     reader.onload = (event) => {
       try {
         const importedData = JSON.parse(event.target.result);
-        if (importedData.type === 'nexus-full-backup' && Array.isArray(importedData.projects)) {
+        if ((importedData.type === 'nexus-full-backup' || importedData.type === 'thoughtflow-backup') && Array.isArray(importedData.projects)) {
           // Validate each project has required structure
           const isValid = importedData.projects.every(p =>
             p && typeof p.id === 'string' && Array.isArray(p.workspaces)

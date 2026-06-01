@@ -2,7 +2,7 @@
   "id": "FEAT-003",
   "type": "chore",
   "description": "Rename the project from 'Nexus Workflow Mind Map' to 'ThoughtFlow' across all files. ThoughtFlow best fits the product vision of a thinking canvas with lightweight task management.",
-  "status": "pending",
+  "status": "in_progress",
   "steps": [
     "Step 1: In index.html, change the <title> from 'Nexus Workflow Mind Map' to 'ThoughtFlow'.",
     "Step 2: In package.json, change the 'name' field from 'nexus-workflow-mindmap' to 'thoughtflow'.",
