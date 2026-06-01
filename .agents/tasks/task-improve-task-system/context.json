@@ -1,0 +1,21 @@
+{
+  "project_type": "React SPA - Mind Map / Whiteboard Canvas with lightweight Task Management",
+  "language": "JavaScript (JSX)",
+  "build_system": "Vite with React plugin, Tailwind CSS for styling",
+  "test_framework": "None configured (no test files found)",
+  "build_command": "cd /projects/sandbox/mindmap5 && npm run build",
+  "test_command": "cd /projects/sandbox/mindmap5 && npm run build",
+  "verification_instructions": "Run npm run build to verify no compile errors. Manual testing for UI changes.",
+  "snapshot_or_generated_files": null,
+  "setup_instructions": "cd /projects/sandbox/mindmap5 && npm install",
+  "environment_constraints": "OPEN_INTERNET - full npm access available. Node v22 with npm available.",
+  "contribution_requirements": "Keep it simple, lightweight, no complex project-management UI. Card design: 280px wide, left border accent. Task system is secondary layer.",
+  "key_patterns": "Single-file components (App.jsx ~5275 lines, TaskPanel.jsx). State managed with useState/useRef. Data persisted to localStorage under 'nexus-app-state' as JSON array of projects. Each project contains: workspaces, tasks, taskGroups, cardTaskLinks. Tailwind CSS utility classes throughout. Lucide React for icons.",
+  "relevant_files": [
+    "src/App.jsx",
+    "src/TaskPanel.jsx",
+    "index.html",
+    "package.json"
+  ],
+  "directory_structure": "Flat src/ directory with App.jsx (main logic + canvas), TaskPanel.jsx (task panel component), MiniMap.jsx (minimap overlay), main.jsx (entry), index.css (Tailwind imports). Public assets in public/."
+}

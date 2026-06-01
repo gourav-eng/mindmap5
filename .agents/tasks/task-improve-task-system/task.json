@@ -1,0 +1,7 @@
+{
+  "task_id": "task-improve-task-system",
+  "task_description": "Comprehensive improvement pass on the Task System: fix task-card link persistence bug, include tasks in import/export, redesign TaskPanel with List View + group tabs + filtering, and rename project to ThoughtFlow.",
+  "status": "in_progress",
+  "feature_order": ["FEAT-001", "FEAT-002", "FEAT-003"],
+  "blocked_reason": null
+}

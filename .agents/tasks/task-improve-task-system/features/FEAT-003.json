@@ -1,0 +1,30 @@
+{
+  "id": "FEAT-003",
+  "type": "chore",
+  "description": "Rename the project from 'Nexus Workflow Mind Map' to 'ThoughtFlow' across all files. ThoughtFlow best fits the product vision of a thinking canvas with lightweight task management.",
+  "status": "pending",
+  "steps": [
+    "Step 1: In index.html, change the <title> from 'Nexus Workflow Mind Map' to 'ThoughtFlow'.",
+    "Step 2: In package.json, change the 'name' field from 'nexus-workflow-mindmap' to 'thoughtflow'.",
+    "Step 3: In src/App.jsx, update the export filename in exportData function from 'nexus-workflow-...' to 'thoughtflow-...' (around line 1860).",
+    "Step 4: In src/App.jsx, update the full backup export filename in exportAllData from 'nexus-full-backup-...' to 'thoughtflow-backup-...' (around line 1744).",
+    "Step 5: In src/App.jsx, update the partial export filename from 'nexus-partial-...' to 'thoughtflow-partial-...' (search for nexus-partial in file download name).",
+    "Step 6: Keep all localStorage keys ('nexus-app-state', 'nexus-active-project', 'nexus-default-project', 'nexus-clipboard', 'nexus-clipboard-group') UNCHANGED to avoid breaking existing user data. Only rename user-visible strings and filenames.",
+    "Step 7: In src/App.jsx, update the backup type identifier in importAllData from checking 'nexus-full-backup' to also accepting 'thoughtflow-backup' (support both for backward compatibility). Update exportAllData to use 'thoughtflow-backup' as the type.",
+    "Step 8: Do NOT change package-lock.json manually - it will be regenerated if needed."
+  ],
+  "acceptance_criteria": [
+    "index.html title shows 'ThoughtFlow'",
+    "package.json name is 'thoughtflow'",
+    "Export filenames use 'thoughtflow' prefix",
+    "Full backup export uses type 'thoughtflow-backup'",
+    "Full backup import accepts both 'nexus-full-backup' and 'thoughtflow-backup' types for backward compatibility",
+    "localStorage keys remain unchanged (no data loss for existing users)",
+    "npm run build succeeds without errors"
+  ],
+  "verification": [
+    "cd /projects/sandbox/mindmap5 && npm run build"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

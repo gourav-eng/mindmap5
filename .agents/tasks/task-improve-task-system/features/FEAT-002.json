@@ -1,0 +1,30 @@
+{
+  "id": "FEAT-002",
+  "type": "feat",
+  "description": "Complete TaskPanel UX redesign: add List View (default) and Card View toggle, group navigation tabs, and status filtering. List View uses a dense spreadsheet-style layout with inline expand/edit. Card View keeps the existing layout as secondary.",
+  "status": "pending",
+  "steps": [
+    "Step 1: Restructure TaskPanel.jsx to support two view modes ('list' and 'card') with a state toggle in the header. Add a view mode toggle button pair (list icon / grid icon) next to existing header controls.",
+    "Step 2: Add group navigation tabs at the top of the task panel (below the header). Render a horizontal scrollable row of tab buttons from taskGroups, plus an 'All' tab. Clicking a tab filters to that group. Active tab highlighted with accent color. Style: compact pill-shaped buttons.",
+    "Step 3: Add status filter dropdown/buttons below the group tabs. Options: All, Not Started, In Progress, Completed, Blocked. When active, filter tasks additionally by status. Show counts next to each filter option.",
+    "Step 4: Implement List View - dense table/spreadsheet layout. Each task is a single row with columns: checkbox (status toggle), task title (editable inline on double-click), linked card name (clickable to locate), status badge (colored dot + label), note preview (truncated first line). Rows grouped under collapsible group section headers. Single click expands row to show full note below the row (inline, no popup). Double click on title enables inline editing.",
+    "Step 5: Keep existing Card View as the secondary view mode. When card view is selected, render the current card-based layout (existing code). Minimal changes needed - just wrap in a conditional.",
+    "Step 6: Style refinements - ensure the list view is visually dense but scannable. Use 10-11px font sizes for data, clear row separators, alternating subtle row backgrounds, proper truncation with ellipsis. Ensure scrolling works well with many tasks. Maintain the same header and close/fullscreen buttons."
+  ],
+  "acceptance_criteria": [
+    "TaskPanel has a view mode toggle (List/Card) in the header",
+    "List View is the default view showing tasks in dense rows",
+    "Group navigation tabs filter tasks by group, with an 'All' option",
+    "Status filter allows filtering by task status",
+    "Single click on a list row expands inline note",
+    "Double click on task title enables inline editing",
+    "Linked card chip in list view is clickable and calls onLocateCard",
+    "Card View shows the existing card-based layout",
+    "npm run build succeeds without errors"
+  ],
+  "verification": [
+    "cd /projects/sandbox/mindmap5 && npm run build"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}
