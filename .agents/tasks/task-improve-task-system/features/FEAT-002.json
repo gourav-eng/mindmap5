@@ -2,7 +2,7 @@
   "id": "FEAT-002",
   "type": "feat",
   "description": "Complete TaskPanel UX redesign: add List View (default) and Card View toggle, group navigation tabs, and status filtering. List View uses a dense spreadsheet-style layout with inline expand/edit. Card View keeps the existing layout as secondary.",
-  "status": "pending",
+  "status": "completed",
   "steps": [
     "Step 1: Restructure TaskPanel.jsx to support two view modes ('list' and 'card') with a state toggle in the header. Add a view mode toggle button pair (list icon / grid icon) next to existing header controls.",
     "Step 2: Add group navigation tabs at the top of the task panel (below the header). Render a horizontal scrollable row of tab buttons from taskGroups, plus an 'All' tab. Clicking a tab filters to that group. Active tab highlighted with accent color. Style: compact pill-shaped buttons.",
@@ -26,5 +26,5 @@
     "cd /projects/sandbox/mindmap5 && npm run build"
   ],
   "blocked_reason": null,
-  "findings": ""
+  "findings": "Complete rewrite of TaskPanel.jsx with List View (default), Card View toggle, group navigation tabs, status filter, inline expand/edit, and dense spreadsheet layout. Build passes cleanly."
 }
