@@ -1730,7 +1730,7 @@ export default function WorkflowApp() {
   // Export all projects as a full backup
   const exportAllData = () => {
     const backupData = {
-      type: 'nexus-full-backup',
+      type: 'thoughtflow-backup',
       version: 1,
       exportDate: new Date().toISOString(),
       defaultProjectId,
@@ -1740,7 +1740,7 @@ export default function WorkflowApp() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `nexus-full-backup-${new Date().toISOString().slice(0,10)}.json`;
+    a.download = `thoughtflow-backup-${new Date().toISOString().slice(0,10)}.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -1852,12 +1852,12 @@ export default function WorkflowApp() {
 
   // --- Import / Export ---
   const exportData = () => {
-    const data = { workspaces, activeTab, nextId };
+    const data = { workspaces, activeTab, nextId, tasks, taskGroups, cardTaskLinks };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `nexus-workflow-${new Date().toISOString().slice(0,10)}.json`;
+    a.download = `thoughtflow-${new Date().toISOString().slice(0,10)}.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -1915,7 +1915,7 @@ export default function WorkflowApp() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `nexus-partial-${wsName}-${new Date().toISOString().slice(0,10)}.json`;
+    a.download = `thoughtflow-partial-${wsName}-${new Date().toISOString().slice(0,10)}.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -1935,6 +1935,15 @@ export default function WorkflowApp() {
           setWorkspaces(importedData.workspaces);
           setActiveTab(importedData.activeTab || importedData.workspaces[0]?.id || '');
           setNextId(importedData.nextId || 10);
+          if (Array.isArray(importedData.tasks) && importedData.tasks.every(t => t && t.id && t.title != null)) {
+            setTasks(importedData.tasks);
+          }
+          if (Array.isArray(importedData.taskGroups) && importedData.taskGroups.every(g => g && g.id && g.name != null)) {
+            setTaskGroups(importedData.taskGroups);
+          }
+          if (Array.isArray(importedData.cardTaskLinks) && importedData.cardTaskLinks.every(l => l && l.cardId && l.taskId)) {
+            setCardTaskLinks(importedData.cardTaskLinks);
+          }
         } else {
           setErrorMessage("Invalid workflow file format.");
         }
@@ -1955,7 +1964,7 @@ export default function WorkflowApp() {
     reader.onload = (event) => {
       try {
         const importedData = JSON.parse(event.target.result);
-        if (importedData.type === 'nexus-full-backup' && Array.isArray(importedData.projects)) {
+        if ((importedData.type === 'nexus-full-backup' || importedData.type === 'thoughtflow-backup') && Array.isArray(importedData.projects)) {
           // Validate each project has required structure
           const isValid = importedData.projects.every(p =>
             p && typeof p.id === 'string' && Array.isArray(p.workspaces)
@@ -1988,6 +1997,15 @@ export default function WorkflowApp() {
               setWorkspaces(defaultProj.workspaces || []);
               setActiveTab(defaultProj.activeTab || defaultProj.workspaces?.[0]?.id || '');
               setNextId(defaultProj.nextId || 10);
+              setTasks(defaultProj.tasks || []);
+              setTaskGroups(defaultProj.taskGroups || [
+                { id: 'tg-today', name: 'Today', order: 0 },
+                { id: 'tg-later', name: 'Later', order: 1 },
+                { id: 'tg-waiting', name: 'Waiting', order: 2 },
+                { id: 'tg-research', name: 'Research', order: 3 },
+                { id: 'tg-followup', name: 'Follow-up', order: 4 },
+              ]);
+              setCardTaskLinks(defaultProj.cardTaskLinks || []);
             }
           } catch (restoreErr) {
             // Rollback to previous state
@@ -2701,8 +2719,7 @@ export default function WorkflowApp() {
       id: nextId.toString(),
       x: targetX, y: targetY,
       title: 'New Card', content: '', theme: 'blue',
-      groupId: targetGroupId, cloneSourceId: null,
-      linkedTaskIds: []
+      groupId: targetGroupId, cloneSourceId: null
     };
     
     updateActiveWorkspace(ws => {
@@ -2736,8 +2753,6 @@ export default function WorkflowApp() {
     };
     setTasks(prev => [...prev, newTask]);
     setCardTaskLinks(prev => [...prev, { cardId, taskId }]);
-    // Update card's linkedTaskIds
-    updateNode(cardId, { linkedTaskIds: [...(card.linkedTaskIds || []), taskId] });
     // Open task panel if not open
     if (!showTaskPanel) setShowTaskPanel(true);
   };
@@ -2747,13 +2762,6 @@ export default function WorkflowApp() {
   };
 
   const deleteTask = (taskId) => {
-    const link = cardTaskLinks.find(l => l.taskId === taskId);
-    if (link) {
-      const card = nodes.find(n => n.id === link.cardId);
-      if (card) {
-        updateNode(link.cardId, { linkedTaskIds: (card.linkedTaskIds || []).filter(id => id !== taskId) });
-      }
-    }
     setTasks(prev => prev.filter(t => t.id !== taskId));
     setCardTaskLinks(prev => prev.filter(l => l.taskId !== taskId));
   };
@@ -4486,8 +4494,10 @@ export default function WorkflowApp() {
                   )}
 
                   {/* Task status indicator */}
-                  {(node.linkedTaskIds && node.linkedTaskIds.length > 0) && (() => {
-                    const linkedTask = tasks.find(t => node.linkedTaskIds.includes(t.id));
+                  {(() => {
+                    const link = cardTaskLinks.find(l => l.cardId === node.id);
+                    if (!link) return null;
+                    const linkedTask = tasks.find(t => t.id === link.taskId);
                     if (!linkedTask) return null;
                     const statusColors = { not_started: 'bg-gray-400', in_progress: 'bg-blue-500', completed: 'bg-green-500', blocked: 'bg-amber-500' };
                     const dotColor = statusColors[linkedTask.status] || 'bg-gray-400';

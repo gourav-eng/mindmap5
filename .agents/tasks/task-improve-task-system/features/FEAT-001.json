@@ -1,0 +1,25 @@
+{
+  "id": "FEAT-001",
+  "type": "fix",
+  "description": "Fix task-card link persistence after page refresh and fix tasks not restoring from full backup import. Two bugs share the same root cause: task data not being properly used as source of truth.",
+  "status": "completed",
+  "steps": [
+    "Step 1: In src/App.jsx, fix the task status indicator on canvas cards (around line 4488-4495). Currently it reads from node.linkedTaskIds which can be stale. Change it to derive the linked task from cardTaskLinks state instead: find link where l.cardId === node.id, then find the task. This makes cardTaskLinks the single source of truth.",
+    "Step 2: In src/App.jsx, fix the importAllData function (around line 1985-2004). After setting workspaces/activeTab/nextId from the restored default project, also call setTasks(defaultProj.tasks || []), setTaskGroups(defaultProj.taskGroups || [...default groups...]), and setCardTaskLinks(defaultProj.cardTaskLinks || []) to hydrate task state on import.",
+    "Step 3: In src/App.jsx, fix the single-workspace handleImport function (around line 1925-1947). This also needs to restore task data if present in the imported JSON. Add: if (importedData.tasks) setTasks(importedData.tasks); if (importedData.taskGroups) setTaskGroups(importedData.taskGroups); if (importedData.cardTaskLinks) setCardTaskLinks(importedData.cardTaskLinks);",
+    "Step 4: In src/App.jsx, fix the exportData function (around line 1852-1865) which exports single workspace data. Include tasks, taskGroups, and cardTaskLinks in the exported JSON: const data = { workspaces, activeTab, nextId, tasks, taskGroups, cardTaskLinks };",
+    "Step 5: Remove the redundant linkedTaskIds property from node creation and task operations. In addTaskFromCard, remove the updateNode call that sets linkedTaskIds. In deleteTask, remove the updateNode call that filters linkedTaskIds. The card no longer needs this property since we derive from cardTaskLinks. Keep backward compatibility by not breaking if the property exists on old data."
+  ],
+  "acceptance_criteria": [
+    "Task status indicator dot on canvas cards uses cardTaskLinks as source of truth, not node.linkedTaskIds",
+    "After full backup import, tasks/taskGroups/cardTaskLinks are restored to runtime state",
+    "After single workspace export+import, tasks are included and restored",
+    "After page refresh (simulated by build success), task-card links persist via cardTaskLinks in localStorage",
+    "npm run build succeeds without errors"
+  ],
+  "verification": [
+    "cd /projects/sandbox/mindmap5 && npm run build"
+  ],
+  "blocked_reason": null,
+  "findings": "All 5 changes applied cleanly. Build passes. The linkedTaskIds property may still exist on old saved node data but is now safely ignored - the app derives task links exclusively from cardTaskLinks state."
+}
