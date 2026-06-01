@@ -1,0 +1,36 @@
+{
+  "id": "FEAT-001",
+  "type": "feat",
+  "description": "Upgrade multi-selection to support all object types (cards, images, groups) using Shift+Click, and add a Connect action (keyboard shortcut 'C' + button in floating toolbar) that creates a connection between exactly 2 selected objects.",
+  "status": "completed",
+  "steps": [
+    "Step 1: Change multi-selection from Ctrl to Shift. In src/App.jsx, update the node onPointerDown handler (around line 4320-4325) that checks `e.ctrlKey || e.metaKey` for individual toggle-selection to instead check `e.shiftKey`. Also update the canvas background handler `handlePointerDownMain` (around line 2246) which starts drag-select with `if (e.ctrlKey || e.metaKey)` to instead use `if (e.shiftKey)`.",
+    "Step 2: Expand selectedNodeIds to a universal selection array that can hold node IDs, group IDs, and image IDs. Rename is optional - can keep the name but allow it to hold any object ID. Update the selection box logic in handlePointerMove (around line 2260-2275) to also include images and groups that intersect the selection rectangle. For images: check if image bounding box overlaps selection box. For groups: check if group bounding box overlaps selection box.",
+    "Step 3: Add Shift+Click on images. In the image onPointerDown handler (around line 4220-4230), add a check: if `e.shiftKey`, toggle the image ID in `selectedNodeIds` and return early (skip dragging). Show a visual ring on selected images similar to nodes (`ring-2 ring-offset-1` class when in selectedNodeIds).",
+    "Step 4: Add Shift+Click on groups. In the group header onPointerDown handler (around line 4076), add a check: if `e.shiftKey`, toggle the group ID in `selectedNodeIds` and return early (skip dragging). Show a visual ring on selected groups (`ring-2 ring-indigo-400` class when in selectedNodeIds).",
+    "Step 5: Add a toast notification system. Create a simple `toastMessage` state and a `showToast(msg)` function that sets the message and auto-clears after 2 seconds. Render it as a fixed positioned element (bottom-center, above the floating toolbar, z-index higher than toolbar). Style: small pill with dark background, white text, fade-in animation.",
+    "Step 6: Add 'Connect' button to the floating multi-select action bar (around line 5065-5100). Add a new button with Link2 icon and text 'Connect' between the Export and Group buttons. The onClick handler should: if selectedNodeIds.length === 2, create an edge between the two IDs (check for duplicates), show toast 'Connected', clear selection. If selectedNodeIds.length !== 2, show toast 'Select only 2 objects'.",
+    "Step 7: Add keyboard shortcut 'C' for connect. Add a new useEffect that listens for keydown 'c' or 'C' (when not in input/textarea, no Ctrl/Meta/Alt/Shift modifiers). If selectedNodeIds.length === 2, create connection and show toast 'Connected'. If selectedNodeIds.length > 0 but !== 2, show toast 'Select only 2 objects'. If selectedNodeIds.length === 0, do nothing (let other shortcuts handle it if any).",
+    "Step 8: Update the Delete action in the floating toolbar to also handle deletion of groups and images that are in selectedNodeIds. Currently it only filters nodes. It should also remove groups whose IDs are in selection, and images whose IDs are in selection, plus clean up related edges.",
+    "Step 9: Update the Duplicate action in the floating toolbar to handle mixed selections (nodes + images + groups). For nodes, duplicate as before. For images, create a copy with offset. For groups, create a copy of the group and its member nodes with offset."
+  ],
+  "acceptance_criteria": [
+    "Shift+Click on a card adds/removes it from multi-selection",
+    "Shift+Click on an image adds/removes it from multi-selection",
+    "Shift+Click on a group adds/removes it from multi-selection",
+    "Shift+drag on canvas background creates a selection rectangle that selects all object types",
+    "Ctrl+Click no longer triggers multi-selection (Ctrl is freed for system shortcuts)",
+    "When exactly 2 objects are selected, pressing C creates a connection and shows 'Connected' toast",
+    "When exactly 2 objects are selected, clicking Connect button creates a connection and shows 'Connected' toast",
+    "When more/fewer than 2 objects are selected, pressing C or clicking Connect shows 'Select only 2 objects' toast",
+    "Selected images show a visual ring indicator",
+    "Selected groups show a visual ring indicator",
+    "Delete in floating toolbar removes selected images and groups in addition to nodes",
+    "The app builds without errors via `npm run build`"
+  ],
+  "verification": [
+    "Run `cd /projects/sandbox/mindmap5 && npm run build` - should complete without errors"
+  ],
+  "blocked_reason": null,
+  "findings": "Build passes cleanly with npm run build. All 9 steps implemented in src/App.jsx. No test framework exists so verification is build-only. The 'C' key shortcut is placed after the 'N' key handler and before the Arrow key handler. It does not conflict with Ctrl+C copy since it requires no modifier keys."
+}

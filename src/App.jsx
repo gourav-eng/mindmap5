@@ -405,6 +405,10 @@ export default function WorkflowApp() {
   const [selectionBox, setSelectionBox] = useState(null);
   const [isMultiSelecting, setIsMultiSelecting] = useState(false);
 
+  // --- Toast Notification ---
+  const [toastMessage, setToastMessage] = useState('');
+  const toastTimerRef = useRef(null);
+
 
   // --- Partial Import States ---
   const [partialImportData, setPartialImportData] = useState(null);
@@ -938,6 +942,12 @@ export default function WorkflowApp() {
     setWorkspaces(prev => prev.map(ws => ws.id === activeTab ? { ...ws, ...updater(ws) } : ws));
   }, [activeTab]);
 
+  const showToast = useCallback((msg) => {
+    setToastMessage(msg);
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = setTimeout(() => setToastMessage(''), 2000);
+  }, []);
+
   // --- Copy/Cut/Paste Node Functions ---
   const copyNode = useCallback((nodeId) => {
     const node = nodes.find(n => n.id === nodeId);
@@ -1336,6 +1346,35 @@ export default function WorkflowApp() {
     window.addEventListener('keydown', handleNewCardKey);
     return () => window.removeEventListener('keydown', handleNewCardKey);
   }, []);
+
+  // --- C key connects two selected objects ---
+  useEffect(() => {
+    const handleConnectKey = (e) => {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT' || e.target.isContentEditable) return;
+      if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+      if (e.key === 'c' || e.key === 'C') {
+        if (selectedNodeIds.length < 2) return;
+        e.preventDefault();
+        if (selectedNodeIds.length === 2) {
+          const [sourceId, targetId] = selectedNodeIds;
+          const currentEdges = stateRef.current.workspaces.find(w => w.id === stateRef.current.activeTab)?.edges || [];
+          const exists = currentEdges.some(edge => (edge.source === sourceId && edge.target === targetId) || (edge.source === targetId && edge.target === sourceId));
+          if (!exists) {
+            takeSnapshot();
+            updateActiveWorkspace(ws => ({ edges: [...ws.edges, { id: `e-${Date.now()}-${Math.random().toString(36).slice(2,6)}`, source: sourceId, target: targetId }] }));
+            showToast('Connected');
+          } else {
+            showToast('Already connected');
+          }
+          setSelectedNodeIds([]);
+        } else {
+          showToast('Select only 2 objects');
+        }
+      }
+    };
+    window.addEventListener('keydown', handleConnectKey);
+    return () => window.removeEventListener('keydown', handleConnectKey);
+  }, [selectedNodeIds, takeSnapshot, updateActiveWorkspace, showToast]);
 
   // --- Arrow key movement for selected nodes ---
   useEffect(() => {
@@ -2243,7 +2282,7 @@ export default function WorkflowApp() {
 
     const isClickBg = e.target === workspaceRef.current || e.target.classList.contains('canvas-grid-clickable');
     if (isClickBg) {
-      if (e.ctrlKey || e.metaKey) {
+      if (e.shiftKey) {
         const coords = getWorkspaceCoords(e);
         setIsMultiSelecting(true);
         setSelectionBox({ startX: coords.x, startY: coords.y, endX: coords.x, endY: coords.y });
@@ -2270,7 +2309,17 @@ export default function WorkflowApp() {
         const nx = n.x, ny = n.y;
         return (nx + NODE_W > minX && nx < maxX && ny + NODE_H > minY && ny < maxY);
       });
-      setSelectedNodeIds(insideNodes.map(n => n.id));
+      const insideImages = (activeWs?.images || []).filter(img => {
+        const iw = img.width || 280;
+        const ih = img.height || 180;
+        return (img.x + iw > minX && img.x < maxX && img.y + ih > minY && img.y < maxY);
+      });
+      const insideGroups = groups.filter(g => {
+        const gw = g.width || 440;
+        const gh = g.height || 420;
+        return (g.x + gw > minX && g.x < maxX && g.y + gh > minY && g.y < maxY);
+      });
+      setSelectedNodeIds([...insideNodes.map(n => n.id), ...insideImages.map(img => img.id), ...insideGroups.map(g => g.id)]);
       return;
     }
     if (isPanning) {
@@ -4050,7 +4099,7 @@ export default function WorkflowApp() {
                     isGrpDragging ? 'shadow-2xl border-indigo-500 z-20' : 'z-0'
                   } ${isTargetHover ? 'ring-4 ring-indigo-500/30 border-indigo-500 border-solid bg-indigo-50/10' : 'border-dashed'} ${
                     connectHoverNodeId === group.id ? 'ring-2 ring-green-400 shadow-lg shadow-green-200/50' : ''
-                  }`}
+                  } ${selectedNodeIds.includes(group.id) ? 'ring-2 ring-indigo-500' : ''}`}
                   style={{ 
                     left: displayX, 
                     top: displayY, 
@@ -4075,6 +4124,13 @@ export default function WorkflowApp() {
                   onPointerDown={(e) => {
                     if (e.target.tagName === 'INPUT' || e.target.closest('button')) return;
                     e.stopPropagation();
+                    if (e.shiftKey) {
+                      e.preventDefault();
+                      setSelectedNodeIds(prev => 
+                        prev.includes(group.id) ? prev.filter(id => id !== group.id) : [...prev, group.id]
+                      );
+                      return;
+                    }
                     setFocusedGroupId(group.id);
                     setFocusedNodeId(null);
                     dragSnapshot.current = JSON.parse(JSON.stringify(stateRef.current));
@@ -4208,7 +4264,7 @@ export default function WorkflowApp() {
               return (
                 <div
                   key={img.id}
-                  className="absolute pointer-events-auto group rounded-lg border border-slate-300/60 overflow-hidden shadow-sm hover:shadow-md transition-shadow cursor-grab active:cursor-grabbing"
+                  className={`absolute pointer-events-auto group rounded-lg border border-slate-300/60 overflow-hidden shadow-sm hover:shadow-md transition-shadow cursor-grab active:cursor-grabbing ${selectedNodeIds.includes(img.id) ? 'ring-2 ring-indigo-500 ring-offset-1' : ''}`}
                   style={{
                     left: imgX,
                     top: imgY,
@@ -4219,6 +4275,13 @@ export default function WorkflowApp() {
                   onPointerDown={(e) => {
                     if (e.target.closest('button')) return;
                     e.stopPropagation();
+                    if (e.shiftKey) {
+                      e.preventDefault();
+                      setSelectedNodeIds(prev => 
+                        prev.includes(img.id) ? prev.filter(id => id !== img.id) : [...prev, img.id]
+                      );
+                      return;
+                    }
                     dragSnapshot.current = JSON.parse(JSON.stringify(stateRef.current));
                     setDraggingImage({
                       id: img.id,
@@ -4319,7 +4382,7 @@ export default function WorkflowApp() {
                   onPointerDown={(e) => {
                     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.closest('button') || e.target.closest('select')) return;
                     e.stopPropagation();
-                    if (e.ctrlKey || e.metaKey) {
+                    if (e.shiftKey) {
                       e.preventDefault();
                       setSelectedNodeIds(prev => 
                         prev.includes(node.id) ? prev.filter(id => id !== node.id) : [...prev, node.id]
@@ -5067,14 +5130,32 @@ export default function WorkflowApp() {
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[80] flex items-center gap-2 px-4 py-2.5 bg-white rounded-xl shadow-xl border border-slate-200">
           <span className="text-sm font-semibold text-slate-600">{selectedNodeIds.length} selected</span>
           <div className="w-px h-5 bg-slate-200"></div>
-          <button onClick={() => { takeSnapshot(); updateActiveWorkspace(ws => { const filtered = ws.nodes.filter(n => !selectedNodeIds.includes(n.id)); return { nodes: filtered, edges: ws.edges.filter(e => !selectedNodeIds.includes(e.source) && !selectedNodeIds.includes(e.target)), groups: computeLayout(ws.groups, filtered) }; }); setSelectedNodeIds([]); }} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete Selected">
+          <button onClick={() => { takeSnapshot(); updateActiveWorkspace(ws => { const filtered = ws.nodes.filter(n => !selectedNodeIds.includes(n.id)); const filteredGroups = ws.groups.filter(g => !selectedNodeIds.includes(g.id)); const filteredImages = (ws.images || []).filter(img => !selectedNodeIds.includes(img.id)); const filteredEdges = ws.edges.filter(e => !selectedNodeIds.includes(e.source) && !selectedNodeIds.includes(e.target)); return { nodes: filtered, edges: filteredEdges, groups: computeLayout(filteredGroups, filtered), images: filteredImages }; }); setSelectedNodeIds([]); }} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete Selected">
             <Trash2 className="w-4 h-4" /> Delete
           </button>
-          <button onClick={() => { takeSnapshot(); const selectedNodes = nodes.filter(n => selectedNodeIds.includes(n.id)); const selectedEdges = edges.filter(e => selectedNodeIds.includes(e.source) && selectedNodeIds.includes(e.target)); let currentId = nextId; const idMap = {}; const newNodes = selectedNodes.map(n => { const newId = currentId.toString(); idMap[n.id] = newId; currentId++; return { ...n, id: newId, x: n.x + 40, y: n.y + 40, cloneSourceId: null }; }); const newEdges = selectedEdges.map(e => ({ id: `e-${currentId++}`, source: idMap[e.source], target: idMap[e.target] })); updateActiveWorkspace(ws => { const updatedNodes = [...ws.nodes, ...newNodes]; return { nodes: updatedNodes, edges: [...ws.edges, ...newEdges], groups: computeLayout(ws.groups, updatedNodes) }; }); setNextId(currentId); setSelectedNodeIds(newNodes.map(n => n.id)); }} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors" title="Duplicate Selected">
+          <button onClick={() => { takeSnapshot(); const selectedNodes = nodes.filter(n => selectedNodeIds.includes(n.id)); const selectedEdges = edges.filter(e => selectedNodeIds.includes(e.source) && selectedNodeIds.includes(e.target)); const selectedImages = (activeWs?.images || []).filter(img => selectedNodeIds.includes(img.id)); let currentId = nextId; const idMap = {}; const newNodes = selectedNodes.map(n => { const newId = currentId.toString(); idMap[n.id] = newId; currentId++; return { ...n, id: newId, x: n.x + 40, y: n.y + 40, cloneSourceId: null }; }); const newEdges = selectedEdges.map(e => ({ id: `e-${currentId++}`, source: idMap[e.source] || e.source, target: idMap[e.target] || e.target })); const newImages = selectedImages.map(img => ({ ...img, id: `img-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, x: img.x + 40, y: img.y + 40 })); updateActiveWorkspace(ws => { const updatedNodes = [...ws.nodes, ...newNodes]; return { nodes: updatedNodes, edges: [...ws.edges, ...newEdges], groups: computeLayout(ws.groups, updatedNodes), images: [...(ws.images || []), ...newImages] }; }); setNextId(currentId); setSelectedNodeIds([...newNodes.map(n => n.id), ...newImages.map(img => img.id)]); }} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors" title="Duplicate Selected">
             <Copy className="w-4 h-4" /> Duplicate
           </button>
           <button onClick={() => exportSelectedNodes(selectedNodeIds)} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Export Selected" id="export-selected-btn">
             <Download className="w-4 h-4" /> Export
+          </button>
+          <button onClick={() => {
+            if (selectedNodeIds.length === 2) {
+              const [sourceId, targetId] = selectedNodeIds;
+              const exists = edges.some(e => (e.source === sourceId && e.target === targetId) || (e.source === targetId && e.target === sourceId));
+              if (!exists) {
+                takeSnapshot();
+                updateActiveWorkspace(ws => ({ edges: [...ws.edges, { id: `e-${Date.now()}-${Math.random().toString(36).slice(2,6)}`, source: sourceId, target: targetId }] }));
+                showToast('Connected');
+              } else {
+                showToast('Already connected');
+              }
+              setSelectedNodeIds([]);
+            } else {
+              showToast('Select only 2 objects');
+            }
+          }} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors" title="Connect Selected (C)">
+            <Link2 className="w-4 h-4" /> Connect
           </button>
           <button onClick={() => {
             if (selectedNodeIds.length < 2) return;
@@ -5114,6 +5195,13 @@ export default function WorkflowApp() {
 
       {/* --- Secret Project Panel --- */}
       {showProjectPanel && renderProjectPanel(false)}
+
+      {/* --- Toast Notification --- */}
+      {toastMessage && (
+        <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-[90] px-4 py-2 bg-slate-800 text-white text-sm font-medium rounded-full shadow-lg animate-in fade-in duration-200">
+          {toastMessage}
+        </div>
+      )}
 
       {/* --- Partial Import Placement Dialog --- */}
       {showPartialImportDialog && partialImportData && (
